@@ -1,0 +1,9 @@
+.DS_Store
+*.swp
+*.bak
+*.tmp
+*.orig
+# Values files for CI renders, not for installs.
+ci/
+# Community variants: the edition strip swaps them in; this chart never renders them.
+*.community.*

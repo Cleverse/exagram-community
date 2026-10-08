@@ -1,0 +1,11 @@
+apiVersion: v2
+name: exagram
+description: Self-hosted Exagram — the same topology as deploy/compose.yml, on Kubernetes.
+type: application
+# A release (release-selfhost.yml) sets version to X.Y.Z and appVersion to vX.Y.Z (the image tag), and pins
+# the image digests in values.yaml.
+version: 0.0.0-dev
+appVersion: local
+home: https://github.com/cleverse/exagram-community
+sources:
+  - https://github.com/cleverse/exagram-community

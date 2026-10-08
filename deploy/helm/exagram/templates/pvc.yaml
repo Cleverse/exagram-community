@@ -1,0 +1,39 @@
+{{- if include "exagram.filesystem" . }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "exagram.componentName" (list . "objects") }}
+  labels:
+    {{- include "exagram.labels" (list . "objects") | nindent 4 }}
+  annotations:
+    # Holds every uploaded body; kept on `helm uninstall`.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.persistence.objects.accessMode }}
+  {{- with .Values.persistence.objects.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.objects.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "exagram.componentName" (list . "caddy-data") }}
+  labels:
+    {{- include "exagram.labels" (list . "web") | nindent 4 }}
+  annotations:
+    # Caddy's certificates and ACME account; kept on `helm uninstall` so a reinstall doesn't re-issue.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.persistence.caddyData.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.caddyData.size }}

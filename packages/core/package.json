@@ -1,0 +1,44 @@
+{
+	"name": "@exagram/core",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./package.json": "./package.json",
+		"./contract": "./contract/index.ts",
+		"./utils/refusal": "./utils/refusal.ts",
+		"./*": [
+			"./*.ts",
+			"./*/index.ts"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"lint": "$npm_execpath typecheck && eslint . --report-unused-disable-directives",
+		"lint:fix": "$npm_execpath typecheck && eslint . --report-unused-disable-directives --fix",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest --passWithNoTests",
+		"test:integration": "vitest run -c vitest.integration.config.ts --passWithNoTests"
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "catalog:",
+		"@aws-sdk/s3-request-presigner": "catalog:",
+		"@exagram/redactor": "workspace:*",
+		"@google-cloud/storage": "catalog:",
+		"@orpc/contract": "catalog:",
+		"argon2": "catalog:",
+		"jose": "catalog:",
+		"pg-boss": "catalog:",
+		"postgres": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@exagram/dotrc": "workspace:*",
+		"@testcontainers/postgresql": "catalog:",
+		"@types/node": "catalog:",
+		"eslint": "catalog:",
+		"testcontainers": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"yaml": "2.9.1"
+	}
+}

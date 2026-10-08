@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+# Test and example placeholders. Each entry is one exact value. Never add `paths`: gitleaks 8.30 then skips every
+# finding in a matching file, a real token included.
+[[allowlists]]
+description = "Test and example placeholders"
+regexTarget = "secret"
+regexes = [
+  '''^0123456789abcdef0123456789abcdef$''',
+  '''^fedcba9876543210fedcba9876543210$''',
+  '''^0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef$''',
+  '''^eyJjbGllbnRfZW1haWwiOiJleGFncmFtQGV4YWdyYW0tZXhhbXBsZS5pYW0uZ3NlcnZpY2VhY2NvdW50LmNvbSIsInByaXZhdGVfa2V5IjoidGVzdC1rZXkifQ==$''',
+  '''^artifacts\/a\/young$''',
+  '''^abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789$''',
+]

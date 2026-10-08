@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+**/dist
+**/gen
+**/.turbo
+docs/plans/*.html
+apps/ios/ExagramKit/openapi.json
+# Edition variants: the strip formats them after the swap. Formatting one here would re-pad what P31 compares.
+**/*.community.*

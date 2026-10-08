@@ -1,0 +1,427 @@
+@import "tailwindcss";
+@import "./mobile.css";
+
+/*
+ * Exagram Team v3 tokens (docs/design/exagram-team-v3/README.md §Design tokens; its prototype is
+ * `Exagram Team v3.dc.html`). v3 keeps v2's layout and moves to a calm, cool palette: Geist type, near-black
+ * actions, purple for the brand only, flat panes split by 1px lines, 6px controls and 10px dialogs.
+ *
+ * Token names predate v3 and are kept so existing classes (`text-muted`, `bg-chip`…) and `var(--color-…)`
+ * call sites pick up the new palette.
+ */
+@theme {
+	/* Text: primary, the two secondaries, icons, muted and tertiary (README §Colour). */
+	--color-ink: #171923;
+	--color-body: #292b33;
+	--color-secondary: #4e5261;
+	--color-secondary-2: #3a3d48;
+	--color-muted: #646879;
+	/* Tertiary. v3 draws #969aaa, which fails WCAG AA for text; #6f7383 passes on white (4.71) and on the
+	   sidebar (4.55). A deliberate deviation from the spec (review, 2026-09-27). */
+	--color-muted-2: #6f7383;
+	/* The path line's "/" between folder and title (v3.3 §2). Decorative, so it is exempt from text contrast. */
+	--color-path-slash: #b7bac7;
+	/* Drag and drop (v3.4 §2): the dashed zones, the target under the cursor, and the drag chip. */
+	--color-drop: #6b84e8;
+	--color-drop-target: #eef2ff;
+	--color-drop-zone: #f7f8fe;
+	--color-drag-chip: #4f63e0;
+	--color-drag-badge: #c0263d;
+	/* Sidebar section labels and panel heads (11px/600 uppercase). */
+	--color-label: #6f7383;
+	/* A control's boundary (the Switch's off track, a radio ring, a checkbox): 3:1 against white and the
+	   dialog surface (WCAG 1.4.11). */
+	--color-control-edge: #858999;
+
+	/* Surfaces. The app and its content are white; `ground` is the preview canvas and the quiet field fill. */
+	--color-panel: #ffffff;
+	--color-ground: #f6f7fa;
+	--color-surface: #fafbfd;
+	--color-surface-dialog: #fafbfd;
+	--color-ground-raised: #fafbfd;
+	--color-surface-soft: #f8f9fc;
+	/* The soft fill (History, zoom, chips) and its hover and pressed steps. */
+	--color-chip: #f4f4f8;
+	--color-subtle: #eff0f4;
+	--color-press: #e7e8ee;
+	--color-row-hover: #f7f7fa;
+	--color-row-selected: #f2f2f6;
+	/* The sidebars (app and Settings) and their selected item. */
+	--color-sidebar: #fafbfd;
+	--color-nav-selected: #eff0f4;
+	--color-toolbar: #f4f4f8;
+	--color-menu-hover: #f4f4f8;
+	/* The hover wash on ghost buttons, icon buttons and nav rows. */
+	--color-hover: #f4f4f8;
+	/* The hairline of a popover card and the segmented well. */
+	--color-frost-line: #e7e8ee;
+	/* Every scrim behind a dialog. */
+	--color-scrim: rgba(23, 25, 35, 0.45);
+	/* The light gap line on the dark Context band. */
+	--color-line-on-dark: rgba(255, 255, 255, 0.12);
+
+	/* Lines: pane dividers and subtle rules, the default border, control borders, the segmented group. */
+	--color-pane-line: #eff0f4;
+	--color-line: #e7e8ee;
+	--color-row-line: #eff0f4;
+	--color-line-faint: #e7e8ee;
+	--color-line-soft: #e7e8ee;
+	--color-line-strong: #e1e3e9;
+	--color-line-pale: #eff0f4;
+	--color-card-line: #e7e8ee;
+	--color-line-segment: #d3d5de;
+
+	/* Primary action: near-black, white text. */
+	--color-primary: #171923;
+	--color-primary-hover: #2e3039;
+
+	/* Brand purple: the logo mark, the collapsed rail's account avatar and the thinking dots only — never a
+	   button, selection, tab or icon. */
+	--color-accent: #6338f0;
+	--color-md: #4e5261;
+
+	/* Type icons, muted and colour-coded: doc, HTML, chat, and the blue folder's stroke and fill. */
+	--color-type-doc: #4e5261;
+	--color-type-html: #f97345;
+	--color-type-chat: #4d8cf7;
+	--color-folder: #6b84e8;
+	--color-folder-fill: #c9d5fb;
+
+	/* v3.5 file-type tiles: a warm-grey tile with the type's short name, or a glyph for HTML and chat. */
+	--color-tile: #f6f5f2;
+	--color-tile-line: #dddbd6;
+	--color-tile-md: #6b4fd1;
+	--color-tile-code: #6f7282;
+	--color-tile-pdf: #d93a1e;
+	--color-tile-ppt: #c7461e;
+	--color-tile-doc: #2b5cd8;
+	--color-tile-xls: #1d7f45;
+
+	/* The old dark top nav's palette. Only the auth card's brand pill (`rail-pill`) and the Audit cost card's
+	   kicker (`rail-fg-muted`) still read these. */
+	--color-rail: #171923;
+	--color-rail-pill: #292b33;
+	--color-rail-fg: #f8f9fc;
+	--color-rail-fg-muted: #b7bac7;
+
+	/* Dark panel (the Context summary band). */
+	--color-dark-panel: #171923;
+	--color-dark-text: #f8f9fc;
+	--color-dark-text-2: #d3d5de;
+	--color-dark-kicker: #b7bac7;
+	--color-dark-faint: #969aaa;
+	--color-dark-chip: #292b33;
+	--color-dark-track: rgba(255, 255, 255, 0.12);
+	--color-dark-fill: #969aaa;
+	/* The 3×3 mark on the dark band: brand purple at .3 and .6 around a solid centre. */
+	--color-mark-soft: rgba(99, 56, 240, 0.3);
+	--color-mark-mid: rgba(99, 56, 240, 0.6);
+	--color-mark-core: rgba(99, 56, 240, 0.95);
+
+	/* Status (unchanged from v2). Pending is amber, positive is green, danger is red. Links are ink with the one
+	   purple hover the README allows. */
+	--color-pending: #d9860b;
+	--color-pending-fg: #7a5b1e;
+	--color-pending-bg: #fbf2df;
+	/* Amber at .35 over white: the count-badge fill, read with `pending-fg`. */
+	--color-pending-tint: #f2d5aa;
+	--color-pending-line: #f5e3bf;
+	/* The "Unsorted" chip and "need a folder" tint: amber at .13. */
+	--color-unsorted-bg: rgba(217, 134, 11, 0.13);
+	--color-green-bg: #e6f2c4;
+	--color-green-fg: #3f5a0a;
+	/* Revision history's tags (v3.6 §3): Current on a pale green, Pending on a pale amber. */
+	--color-current-tag-bg: #eaf3da;
+	--color-pending-tag-bg: #fbf0da;
+	/* Revision history's list column. */
+	--color-history-list: #fafafc;
+	--color-link: #171923;
+	--color-link-hover: #6338f0;
+	--color-blue-bg: #ddeefa;
+	--color-blue-fg: #1b4761;
+	--color-orange-bg: #fde8de;
+	--color-orange-fg: #673f2e;
+	--color-violet-fg: #3a3d48;
+	--color-html-bg: #fde8de;
+	--color-html-fg: #673f2e;
+	--color-gold-bg: #fbf2df;
+	--color-gold-fg: #7a5b1e;
+	--color-gold-card: #f7ecd4;
+	--color-gold-line: #f2d5aa;
+	/* Danger: dark red text on a red tint. */
+	--color-danger: #5f2b2b;
+	--color-danger-bg: #fbe8e8;
+	--color-danger-hover: #f6d3d3;
+	--color-dot: #646879;
+
+	/* Named hues. Periwinkle has no UI role and is kept neutral so a stray use never reads as purple. */
+	--color-periwinkle: #4e5261;
+	--color-periwinkle-deep: #171923;
+	--color-periwinkle-tint: #eff0f4;
+	--color-marigold: #d9860b;
+	--color-marigold-deep: #7a5b1e;
+	--color-fern: #78b068;
+	--color-teal: #2ea8c4;
+	--color-teal-deep: #134752;
+	--color-ok: #5f7a1f;
+	--color-ok-deep: #3f5a0a;
+	--color-held: #c24a4a;
+	--color-held-deep: #5f2b2b;
+
+	/* Geist for body text; Archivo for titles and headings (18px and up, 600–700) and the uppercase micro-label;
+	   Geist Mono for data. IBM Plex Sans Thai covers Thai under both faces. */
+	--font-sans: "Geist", "IBM Plex Sans Thai", ui-sans-serif, system-ui, sans-serif;
+	--font-display: "Archivo", "IBM Plex Sans Thai", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "Geist Mono", ui-monospace, monospace;
+
+	/* Shape: 6px on controls, rows, chips, menus and the sheet; 10px on dialogs and the Ask button. Panes have
+	   none, and the pending dot stays square. */
+	--radius: 6px;
+	--radius-dialog: 10px;
+
+	--shadow-menu: 0 12px 32px rgba(23, 25, 35, 0.15);
+	--shadow-card: 0 12px 32px rgba(23, 25, 35, 0.15);
+	--shadow-dialog: 0 30px 80px rgba(23, 25, 35, 0.3);
+	--shadow-lift: 0 1px 2px rgba(23, 25, 35, 0.06), 0 3px 9px rgba(23, 25, 35, 0.05);
+	--shadow-panel: 0 24px 64px rgba(23, 25, 35, 0.28);
+	--shadow-toast: 0 12px 32px rgba(23, 25, 35, 0.25);
+	--shadow-fab: 0 8px 30px rgba(20, 20, 40, 0.18);
+	--shadow-knob: 0 1px 3px rgba(23, 25, 35, 0.25);
+	/* The preview's document sheet: no border, a very soft lift. */
+	--shadow-sheet: 0 1px 2px rgba(20, 20, 30, 0.03), 0 8px 32px rgba(20, 20, 40, 0.05);
+	/* A secondary action's 1px control border, and the white plate of a light segmented toggle. */
+	--shadow-plate: inset 0 0 0 1px #e1e3e9;
+
+	/* Motion: one arrival curve; the loop curve is for the thinking dots only. */
+	--ease-arrive: cubic-bezier(0.22, 0.61, 0.36, 1);
+	--ease-loop: cubic-bezier(0.4, 0, 0.6, 1);
+	--duration-press: 120ms;
+	--duration-row: 300ms;
+	--duration-tab: 340ms;
+	--duration-panel: 300ms;
+}
+
+@layer base {
+	html,
+	body {
+		margin: 0;
+		padding: 0;
+		background: var(--color-panel);
+		color: var(--color-ink);
+		overflow-x: auto;
+	}
+
+	/* A phone never scrolls sideways; the mobile shell sizes itself to the viewport (docs/design/exagram-mobile). */
+	html[data-shell="mobile"],
+	html[data-shell="mobile"] body {
+		overflow-x: hidden;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	* {
+		box-sizing: border-box;
+	}
+
+	/* Artifact titles are links in list rows, so a link reads as ink until hovered. Prose links use `--color-link`. */
+	a {
+		color: var(--color-ink);
+	}
+
+	a:hover {
+		color: var(--color-link-hover);
+	}
+
+	button {
+		font: inherit;
+		color: inherit;
+		background: none;
+		border: 0;
+		padding: 0;
+		cursor: pointer;
+	}
+
+	input,
+	textarea {
+		font: inherit;
+		color: inherit;
+	}
+
+	/* v3: 6px on every control. Components that must stay square (the underline tabs) set their own radius. */
+	button,
+	input,
+	textarea,
+	select {
+		border-radius: var(--radius);
+	}
+
+	/* The prototype leaves the browser default; a visible ring is the one deliberate deviation. */
+	:focus-visible {
+		outline: 2px solid var(--color-ink);
+		outline-offset: 2px;
+	}
+
+	#root {
+		font-family: var(--font-sans);
+		min-height: 100vh;
+		background: var(--color-panel);
+		color: var(--color-ink);
+		font-size: 15px;
+		line-height: 1.4;
+		position: relative;
+	}
+
+	/* The desktop layout needs 880px; the mobile screens are drawn for a phone's width instead. */
+	html:not([data-shell="mobile"]) #root {
+		min-width: 880px;
+	}
+
+	/* The mobile shell is pinned to the viewport and scrolls inside itself. On iOS Safari 100vh is taller than
+	   the visible area, so a 100vh root let the whole page scroll and carry the fixed header away with it. Pages
+	   outside the shell (sign-in, consent) still grow past it and scroll the document, and keep themselves clear
+	   of the safe-area insets that `viewport-fit=cover` reports. */
+	html[data-shell="mobile"] #root {
+		min-height: 100dvh;
+	}
+}
+
+/* Menus and popovers arrive from below. */
+@keyframes fadeUp {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* Panels arrive from the right: the content window, History, the chat drawer. */
+@keyframes slideIn {
+	from {
+		opacity: 0;
+		transform: translateX(14px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes slideOut {
+	from {
+		opacity: 1;
+		transform: none;
+	}
+	to {
+		opacity: 0;
+		transform: translateX(28px);
+	}
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes fadeOut {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+/* A row that would push content down grows open instead of appearing at full height: the New Revision bar, a
+   Context group. Its child needs `min-height: 0; overflow: hidden`, and no padding or border of its own. */
+@keyframes revealRow {
+	from {
+		grid-template-rows: 0fr;
+		opacity: 0;
+	}
+	to {
+		grid-template-rows: 1fr;
+		opacity: 1;
+	}
+}
+
+/* The thinking matrix's Pulse register: each square fades on the loop curve, staggered into a wave. */
+@keyframes thinkingPulse {
+	0%,
+	100% {
+		opacity: 0.25;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.thinking-matrix > span {
+		animation: none !important;
+		opacity: 0.6;
+	}
+}
+
+/* Skeleton placeholders breathe while their data loads. */
+@keyframes skeletonPulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 1ms !important;
+		transition-duration: 1ms !important;
+	}
+}
+
+/* The segmented control's well (v3 P:1573): white, a hairline and a faint inset shadow. */
+@utility well {
+	background: var(--color-panel);
+	border: 1px solid rgba(23, 25, 35, 0.09);
+	box-shadow: inset 0 1px 2px #f2f2f6;
+}
+
+/*
+ * Press feedback for buttons: a 1px drop on press, over the short press duration, while colour and
+ * shadow changes run over the row duration. Both use the one arrival curve.
+ */
+@utility press {
+	transition:
+		transform var(--duration-press) var(--ease-arrive),
+		background-color var(--duration-row) var(--ease-arrive),
+		border-color var(--duration-row) var(--ease-arrive),
+		color var(--duration-row) var(--ease-arrive),
+		box-shadow var(--duration-row) var(--ease-arrive);
+	&:active:not(:disabled) {
+		transform: translateY(1px);
+	}
+}
+
+/* The uppercase micro-label (v5): Archivo 11px/600, .06em, `muted` — list and panel section labels. */
+@utility mono-label {
+	@apply font-display text-[11px] font-semibold tracking-[0.06em] text-muted uppercase;
+}
+
+/* The same micro-label in `label` grey: sidebar section labels, panel heads, the library's date groups. */
+@utility mono-kicker {
+	@apply font-display text-[11px] font-semibold tracking-[0.06em] text-label uppercase;
+}
+
+/* Column headers are sentence case in Aura. */
+@utility mono-col {
+	@apply text-[12px] text-muted;
+}

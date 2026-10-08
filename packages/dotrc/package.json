@@ -1,0 +1,21 @@
+{
+	"name": "@exagram/dotrc",
+	"private": true,
+	"type": "module",
+	"files": [
+		"eslint",
+		"tsconfig",
+		"tsup"
+	],
+	"dependencies": {
+		"@eslint/js": "9.39.2",
+		"eslint": "catalog:",
+		"eslint-plugin-import": "2.32.0",
+		"eslint-plugin-react-hooks": "5.1.0",
+		"eslint-plugin-react-refresh": "0.4.24",
+		"eslint-plugin-unused-imports": "4.2.0",
+		"globals": "15.15.0",
+		"tsup": "catalog:",
+		"typescript-eslint": "catalog:"
+	}
+}

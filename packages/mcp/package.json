@@ -1,0 +1,26 @@
+{
+	"name": "@exagram/mcp",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"lint": "$npm_execpath typecheck && eslint . --report-unused-disable-directives",
+		"lint:fix": "$npm_execpath typecheck && eslint . --report-unused-disable-directives --fix",
+		"format": "prettier --check \"**/*.{ts,mjs,cjs,json}\"",
+		"format:fix": "prettier --write \"**/*.{ts,mjs,cjs,json}\"",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest --passWithNoTests",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@exagram/core": "workspace:*",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@exagram/dotrc": "workspace:*",
+		"@types/node": "catalog:",
+		"eslint": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

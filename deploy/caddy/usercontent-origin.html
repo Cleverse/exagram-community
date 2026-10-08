@@ -1,0 +1,5 @@
+		{{- /* Rendered per request by the Caddyfile's `templates`: UC_HOST, only when it is a bare host name. */ -}}
+		{{- $uc := env "UC_HOST" -}}
+		{{- if regexMatch `^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$` $uc }}
+		<meta name="exagram-usercontent-origin" content="https://{{ $uc }}" />
+		{{- end }}

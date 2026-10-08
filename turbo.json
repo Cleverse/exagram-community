@@ -1,0 +1,53 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"ui": "tui",
+	"globalDependencies": [
+		"database/postgres/migrations/**",
+		"database/postgres/queries/**",
+		"deploy/**",
+		"tsconfig.json",
+		".env.example",
+		"mise.toml",
+		".github/workflows/ci.yml",
+		"package.json",
+		"pnpm-lock.yaml",
+		"pnpm-workspace.yaml",
+		".npmrc"
+	],
+	"tasks": {
+		"transit": {
+			"dependsOn": ["^transit"]
+		},
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**"]
+		},
+		"start": {},
+		"typecheck": {
+			"dependsOn": ["transit"]
+		},
+		"lint": {
+			"dependsOn": ["transit"]
+		},
+		"lint:fix": {},
+		"test": {
+			"dependsOn": ["transit"],
+			"passThroughEnv": ["HELM_BIN"]
+		},
+		"test:integration": {
+			"dependsOn": ["transit"]
+		},
+		"test:watch": {
+			"cache": false,
+			"persistent": true
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true
+		},
+		"gen": {
+			"dependsOn": ["^gen"]
+		}
+	}
+}

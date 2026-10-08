@@ -1,0 +1,13 @@
+# Brought S3-compatible store (R2) with static credentials.
+appHost: exagram.example.com
+acmeEmail: admin@example.com
+storage:
+  driver: s3
+  s3:
+    endpoint: https://account.r2.cloudflarestorage.com
+    publicEndpoint: https://account.r2.cloudflarestorage.com
+    region: auto
+    bucket: exagram
+    forcePathStyle: true
+    accessKeyId: r2-access-key-id
+    secretAccessKey: r2-secret-access-key

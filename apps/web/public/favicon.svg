@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The top-nav brand mark: a 3×3 grid of squares on the nav's #161615 (see AppShell BRAND_CELLS). -->
+  <rect width="32" height="32" rx="7" fill="#161615"/>
+  <g>
+    <rect x="7"    y="7"    width="5" height="5" rx="1" fill="rgba(150,90,222,.28)"/>
+    <rect x="13.5" y="7"    width="5" height="5" rx="1" fill="rgba(150,90,222,.6)"/>
+    <rect x="20"   y="7"    width="5" height="5" rx="1" fill="rgba(150,90,222,.28)"/>
+    <rect x="7"    y="13.5" width="5" height="5" rx="1" fill="rgba(150,90,222,.6)"/>
+    <rect x="13.5" y="13.5" width="5" height="5" rx="1" fill="rgba(104,110,230,.95)"/>
+    <rect x="20"   y="13.5" width="5" height="5" rx="1" fill="rgba(150,90,222,.6)"/>
+    <rect x="7"    y="20"   width="5" height="5" rx="1" fill="rgba(150,90,222,.28)"/>
+    <rect x="13.5" y="20"   width="5" height="5" rx="1" fill="rgba(150,90,222,.6)"/>
+    <rect x="20"   y="20"   width="5" height="5" rx="1" fill="rgba(150,90,222,.28)"/>
+  </g>
+</svg>

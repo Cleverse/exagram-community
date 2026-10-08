@@ -1,0 +1,58 @@
+{{- /* dig: `helm upgrade --reuse-values` from a chart without networkPolicy carries no such key. */}}
+{{- if dig "networkPolicy" "enabled" true .Values.AsMap }}
+{{- /*
+Ingress-only: api and usercontent are reached through web (Caddy) and the `helm test` Pod, never by
+other Pods, which could otherwise send their own X-Real-IP to the api. Postgres takes only the Pods that
+hold DATABASE_URL or MIGRATE_DATABASE_URL (the wait-for-schema init containers run inside the app Pods).
+Needs a CNI that enforces NetworkPolicy.
+*/}}
+{{- range $component, $port := dict "api" 3000 "usercontent" 3002 }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "exagram.componentName" (list $ $component) }}
+  labels:
+    {{- include "exagram.labels" (list $ $component) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "exagram.selectorLabels" (list $ $component) | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- range $from := list "web" "test" }}
+        - podSelector:
+            matchLabels:
+              {{- include "exagram.selectorLabels" (list $ $from) | nindent 14 }}
+        {{- end }}
+      ports:
+        - port: {{ $port }}
+          protocol: TCP
+---
+{{- end }}
+{{- if .Values.database.bundled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "exagram.postgresHost" . }}
+  labels:
+    {{- include "exagram.labels" (list . "postgres") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "exagram.selectorLabels" (list . "postgres") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- range $from := list "api" "worker" "usercontent" "migrate" }}
+        - podSelector:
+            matchLabels:
+              {{- include "exagram.selectorLabels" (list $ $from) | nindent 14 }}
+        {{- end }}
+      ports:
+        - port: 5432
+          protocol: TCP
+{{- end }}
+{{- end }}

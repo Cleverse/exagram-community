@@ -1,0 +1,29 @@
+[tools]
+node = { version = "24.16", postinstall = "corepack enable" }
+sqlc = "1.29.0"
+"aqua:golang-migrate/migrate" = "4.20.1"
+"npm:typescript-language-server" = "6.0.1"
+
+[hooks]
+enter = ["mise i -q"]
+postinstall = ["corepack enable"]
+
+[plugins]
+sqlc = "https://github.com/dylanrayboss/asdf-sqlc"
+
+[settings]
+experimental = true
+idiomatic_version_file_enable_tools = ["node"]
+
+[tasks.install]
+description = "Install all dependencies"
+run = "pnpm install"
+
+[tasks.generate]
+depends = ["install"]
+description = "Run sqlc and every package generator"
+run = ["sqlc generate", "node scripts/fix-sqlc-postgres-imports.mjs", "pnpm run gen"]
+
+[tasks.gen]
+depends = ["generate"]
+description = "Alias for generate"

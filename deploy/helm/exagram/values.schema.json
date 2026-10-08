@@ -1,0 +1,174 @@
+{
+	"$schema": "https://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"required": ["appHost"],
+	"properties": {
+		"appHost": {
+			"description": "Required (the templates refuse an empty one). Lower-case host name, no scheme, port or path.",
+			"type": "string",
+			"pattern": "^([a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)?$"
+		},
+		"ucHost": {
+			"type": "string",
+			"pattern": "^([a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)?$"
+		},
+		"acmeEmail": { "type": "string" },
+		"nameOverride": { "type": "string" },
+		"fullnameOverride": { "type": "string" },
+		"image": {
+			"type": "object",
+			"properties": {
+				"registry": { "type": "string", "minLength": 1 },
+				"tag": { "type": "string" },
+				"digest": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"api": { "$ref": "#/definitions/digest" },
+						"worker": { "$ref": "#/definitions/digest" },
+						"usercontent": { "$ref": "#/definitions/digest" },
+						"web": { "$ref": "#/definitions/digest" },
+						"migrate": { "$ref": "#/definitions/digest" }
+					}
+				},
+				"pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+			}
+		},
+		"imagePullSecrets": { "type": "array" },
+		"tls": {
+			"type": "object",
+			"properties": {
+				"mode": { "type": "string", "enum": ["acme", "ingress"] },
+				"http3": { "type": "boolean" }
+			}
+		},
+		"service": {
+			"type": "object",
+			"properties": { "annotations": { "type": "object" } }
+		},
+		"ingress": {
+			"type": "object",
+			"properties": {
+				"className": { "type": "string" },
+				"annotations": { "type": "object" },
+				"tls": { "type": "array" },
+				"clientIpHeader": { "type": "string", "pattern": "^[A-Za-z0-9-]+$" },
+				"trustedProxyCidrs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+				"controllerNamespace": { "type": "string", "minLength": 1 },
+				"networkPolicy": {
+					"type": "object",
+					"properties": { "enabled": { "type": "boolean" } }
+				}
+			}
+		},
+		"networkPolicy": {
+			"type": "object",
+			"properties": { "enabled": { "type": "boolean" } }
+		},
+		"existingSecret": { "type": "string" },
+		"database": {
+			"type": "object",
+			"properties": {
+				"bundled": { "type": "boolean" },
+				"external": {
+					"type": "object",
+					"properties": {
+						"url": { "type": "string" },
+						"migrateUrl": { "type": "string" },
+						"plaintextHosts": { "type": "string" },
+						"caSecret": {
+							"type": "object",
+							"properties": {
+								"name": { "type": "string" },
+								"key": { "type": "string", "minLength": 1 }
+							}
+						},
+						"caIsServerSpecific": { "type": "boolean" }
+					}
+				}
+			}
+		},
+		"postgres": {
+			"type": "object",
+			"properties": {
+				"image": {
+					"type": "object",
+					"properties": {
+						"repository": { "type": "string", "minLength": 1 },
+						"tag": { "type": "string", "minLength": 1 },
+						"pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+					}
+				}
+			}
+		},
+		"storage": {
+			"type": "object",
+			"properties": {
+				"driver": { "type": "string", "enum": ["filesystem", "s3", "gcs"] },
+				"s3": {
+					"type": "object",
+					"properties": {
+						"endpoint": { "type": "string" },
+						"publicEndpoint": { "type": "string" },
+						"region": { "type": "string" },
+						"bucket": { "type": "string" },
+						"forcePathStyle": { "type": ["boolean", "null"] },
+						"httpHosts": { "type": "string" },
+						"accessKeyId": { "type": "string" },
+						"secretAccessKey": { "type": "string" }
+					}
+				},
+				"gcs": {
+					"type": "object",
+					"properties": {
+						"bucket": { "type": "string" },
+						"projectId": { "type": "string" },
+						"serviceAccountKeyBase64": { "type": "string" }
+					}
+				}
+			}
+		},
+		"persistence": {
+			"type": "object",
+			"properties": {
+				"postgres": { "$ref": "#/definitions/volume" },
+				"objects": {
+					"allOf": [
+						{ "$ref": "#/definitions/volume" },
+						{
+							"type": "object",
+							"properties": {
+								"accessMode": { "type": "string", "enum": ["ReadWriteOnce", "ReadWriteMany"] }
+							}
+						}
+					]
+				},
+				"caddyData": { "$ref": "#/definitions/volume" }
+			}
+		},
+		"env": {
+			"type": "object",
+			"additionalProperties": { "type": ["string", "number", "boolean"] }
+		},
+		"envFrom": { "type": "array" },
+		"resources": { "type": "object" },
+		"nodeSelector": { "type": "object" },
+		"tolerations": { "type": "array" },
+		"affinity": { "type": "object" },
+		"podAnnotations": { "type": "object" },
+		"tests": {
+			"type": "object",
+			"properties": { "image": { "type": "string", "minLength": 1 } }
+		}
+	},
+	"definitions": {
+		"digest": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64})?$" },
+		"volume": {
+			"type": "object",
+			"properties": {
+				"size": { "type": "string", "minLength": 1 },
+				"storageClass": { "type": "string" }
+			}
+		}
+	}
+}

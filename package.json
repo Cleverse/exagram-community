@@ -1,0 +1,37 @@
+{
+	"name": "exagram",
+	"private": true,
+	"license": "AGPL-3.0-only",
+	"type": "module",
+	"scripts": {
+		"build": "turbo build",
+		"dev": "turbo dev",
+		"start": "turbo start",
+		"typecheck": "turbo typecheck",
+		"lint": "turbo lint",
+		"lint:fix": "turbo lint:fix",
+		"check:tsrefs": "node scripts/check-tsconfig-refs.mjs",
+		"test": "turbo test",
+		"test:integration": "turbo test:integration",
+		"gen": "turbo gen",
+		"format": "prettier --check \"{apps,packages}/**/*.{ts,tsx,mjs,cjs,json}\"",
+		"format:fix": "prettier --write \"{apps,packages}/**/*.{ts,tsx,mjs,cjs,json}\"",
+		"prepare": "husky"
+	},
+	"packageManager": "pnpm@11.3.0",
+	"engines": {
+		"node": ">=24"
+	},
+	"devDependencies": {
+		"husky": "9.1.7",
+		"lint-staged": "16.2.7",
+		"prettier": "3.7.4",
+		"turbo": "2.11.4",
+		"typescript": "catalog:"
+	},
+	"lint-staged": {
+		"*.{js,ts,tsx,mjs,cjs,json,css,md}": [
+			"prettier --write"
+		]
+	}
+}

@@ -1,0 +1,8 @@
+{
+	"extends": "@exagram/dotrc/tsconfig/node.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "."
+	},
+	"include": ["src/**/*", "test/**/*", "scripts/**/*"]
+}

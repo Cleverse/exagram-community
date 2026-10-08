@@ -1,0 +1,47 @@
+{{- $app := include "exagram.appHost" . }}
+{{- $uc := include "exagram.ucHost" . }}
+{{- $web := include "exagram.componentName" (list . "web") }}
+Exagram {{ .Chart.AppVersion }} is installed as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+{{- if eq .Values.tls.mode "acme" }}
+
+1. Read the LoadBalancer address of the web Service (it can take a minute to appear):
+
+     kubectl get service {{ $web }} --namespace {{ .Release.Namespace }} \
+       -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}{"\n"}'
+
+2. Create two DNS records pointing at that address (A for an IP, CNAME for a host name):
+
+     {{ $app }}
+     {{ $uc }}
+
+   Caddy gets the certificates once both resolve, and retries on its own until they do.
+
+3. Open https://{{ $app }} and create the Admin account.
+{{- else }}
+
+1. Point DNS for both hosts at your ingress controller, with certificates for both on the Ingress:
+
+     {{ $app }}
+     {{ $uc }}
+
+2. Open https://{{ $app }} and create the Admin account.
+{{- end }}
+
+Optional checks: helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }} from inside the cluster,
+and once DNS resolves, smoke.sh from the release bundle from your machine:
+
+  docker run --rm {{ .Values.image.registry }}/exagram-deploy:{{ .Values.image.tag | default .Chart.AppVersion }} | tar x
+  exagram/smoke.sh https://{{ $app }} https://{{ $uc }}
+{{- if eq .Values.storage.driver "filesystem" }}
+
+WARNING: storage.driver=filesystem keeps every upload on one ReadWriteOnce volume, so api, worker,
+usercontent and the migrate Job run on one node, and losing that node stops them. For production use
+storage.driver=s3 or gcs.
+{{- end }}
+{{- if not .Values.existingSecret }}
+
+WARNING: the generated Secret {{ include "exagram.fullname" . }} holds the signing keys and the database
+password. Back it up now, next to your database backups:
+
+  (umask 077 && kubectl get secret {{ include "exagram.fullname" . }} --namespace {{ .Release.Namespace }} -o yaml > exagram-secret.yaml)
+{{- end }}
