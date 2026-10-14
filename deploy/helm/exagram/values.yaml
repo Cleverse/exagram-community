@@ -1,0 +1,215 @@
+# Exagram Helm chart. The two-value install:
+#   helm install exagram oci://ghcr.io/cleverse/charts/exagram --set appHost=exagram.acme.com --set acmeEmail=admin@acme.com
+
+# Required. The host people open: a lower-case DNS name without scheme, port or path.
+appHost: ""
+
+# The usercontent host, where HTML bodies run on their own origin. Default: "-files" after appHost's
+# first label (exagram.acme.com -> exagram-files.acme.com), which needs appHost to have 3 or more labels.
+ucHost: ""
+
+# Required when tls.mode=acme: the address Caddy registers with Let's Encrypt.
+acmeEmail: ""
+
+# Override the chart name, or the whole resource-name prefix (default: <release>-exagram, or <release>
+# when the release name already contains "exagram").
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  # Images are <registry>/exagram-<name>:<tag>, for api, worker, usercontent, web and migrate.
+  registry: ghcr.io/cleverse
+  # Default: the chart's appVersion.
+  tag: ""
+  # Optional sha256 digest per image, appended as @sha256:…; a release pins all five.
+  digest:
+    api: ""
+    worker: ""
+    usercontent: ""
+    web: ""
+    migrate: ""
+  pullPolicy: IfNotPresent
+
+# Pull secrets for the images, e.g. [{name: ghcr}] while the GHCR packages are private.
+imagePullSecrets: []
+
+tls:
+  # acme: the web Service is a LoadBalancer on 80/443 and Caddy gets Let's Encrypt certificates itself.
+  #   Needs a cluster that gives a LoadBalancer a public address, and DNS for both hosts pointing at it.
+  # ingress: the web Service is ClusterIP :80 behind an Ingress (ingress.*) that terminates TLS.
+  mode: acme
+  # acme only: also publish 443/UDP for HTTP/3. Off by default: mixed-protocol LoadBalancer support varies.
+  http3: false
+
+service:
+  # Annotations on the web Service, e.g. a cloud load balancer's settings (acme mode).
+  annotations: {}
+
+ingress:
+  # tls.mode=ingress only. The chart installs neither an ingress controller nor cert-manager.
+  className: ""
+  # The controller must not buffer server-sent events (/v1/events, /l/*/events) or they arrive late. The
+  # defaults are ingress-nginx's: no response buffering, and request bodies up to the api's 20 MiB upload
+  # limit (UPLOAD_MAX_BYTES) plus headroom. Add e.g. a cert-manager issuer here.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "21m"
+  # Ingress TLS entries, e.g. [{hosts: [exagram.acme.com, exagram-files.acme.com], secretName: exagram-tls}].
+  tls: []
+  # The header the controller sets to the client address. Caddy reads it and overwrites X-Real-IP toward
+  # the api (whose CLIENT_IP_HEADER stays x-real-ip).
+  clientIpHeader: X-Forwarded-For
+  # CIDRs Caddy trusts that header from. Empty: any private address, which is why the NetworkPolicy
+  # below admits only the controller. Set this (e.g. the controller Pods' CIDR) where NetworkPolicy isn't enforced.
+  trustedProxyCidrs: []
+  # The namespace the ingress controller runs in; the NetworkPolicy lets only it reach web.
+  controllerNamespace: ingress-nginx
+  networkPolicy:
+    # Needs a CNI that enforces NetworkPolicy.
+    enabled: true
+
+# Ingress-only NetworkPolicies (both TLS modes): the api and usercontent take traffic only from web and the
+# `helm test` Pod, the bundled Postgres only from the Pods that connect to it. Without them any Pod could
+# call the api directly with its own X-Real-IP. Needs a CNI that enforces NetworkPolicy; without one it has no effect.
+networkPolicy:
+  enabled: true
+
+# A Secret you manage, in place of the generated one. The chart then creates no Secret and reads these
+# keys from it (needed for GitOps renders, where lookup can't see the live Secret):
+#   always:    USERCONTENT_TOKEN_SECRET, UPLOAD_TOKEN_SECRET, OIDC_COOKIE_KEYS (each 32+ characters),
+#              OIDC_JWKS (JWKS JSON or one PEM RSA private key, 2048+ bits),
+#              DATABASE_URL, MIGRATE_DATABASE_URL
+#   bundled Postgres: POSTGRES_PASSWORD, and both URLs pointing at the <fullname>-postgres Service
+#   optional:  S3_ACCESS_KEY_ID + S3_SECRET_ACCESS_KEY, GCS_SERVICE_ACCOUNT_KEY_BASE64
+# Without it, the chart generates the Secret <fullname> on first install, keeps it on upgrade and on
+# `helm uninstall`, and it must be backed up.
+existingSecret: ""
+
+database:
+  # true: a postgres:18 StatefulSet in this release, plaintext inside the cluster.
+  # false: your own Postgres, from database.external or existingSecret.
+  bundled: true
+  external:
+    # DATABASE_URL, for the apps: needs search_path=exagram%2Cpublic and an sslmode (verify-full,
+    # verify-ca, or disable listed in plaintextHosts). Rendered into the Secret.
+    url: ""
+    # MIGRATE_DATABASE_URL, for migrations: the same database, no search_path, with
+    # x-migrations-table=%22public%22.%22schema_migrations%22&x-migrations-table-quoted=1. Rendered into the Secret.
+    migrateUrl: ""
+    # DATABASE_PLAINTEXT_HOSTS: comma-separated hosts allowed with sslmode=disable, only on a trusted network.
+    plaintextHosts: ""
+    # A Secret holding a private CA, mounted read-only at /certs/db-ca.pem; both URLs then name it with
+    # sslrootcert=/certs/db-ca.pem.
+    caSecret:
+      name: ""
+      key: ca.pem
+    # DATABASE_CA_SERVER_SPECIFIC: required for sslmode=verify-ca, confirming the CA signs only this server.
+    caIsServerSpecific: false
+
+postgres:
+  # Bundled database only. Same image as deploy/compose.postgres.yml.
+  image:
+    repository: postgres
+    tag: "18"
+    pullPolicy: IfNotPresent
+
+storage:
+  # filesystem: one ReadWriteOnce volume (persistence.objects). api, worker, usercontent and the migrate
+  #   Job must then share one node (a required pod affinity does it), and losing that node stops them,
+  #   as losing the Compose VM does. Fine to start; not for production.
+  # s3 or gcs: a bucket you bring (S3, R2, MinIO, GCS); no volume, no affinity. The production choice.
+  driver: filesystem
+  s3:
+    # S3_ENDPOINT: empty for AWS. Must be https://, or http:// for a host listed in httpHosts.
+    endpoint: ""
+    # S3_PUBLIC_ENDPOINT: the address browsers upload to, required with endpoint (often the same URL).
+    publicEndpoint: ""
+    # S3_REGION (R2: auto) and S3_BUCKET, both required.
+    region: ""
+    bucket: ""
+    # S3_FORCE_PATH_STYLE: true or false; null leaves the SDK default.
+    forcePathStyle: null
+    # S3_HTTP_HOSTS: hosts endpoint may reach over plain http, only on a trusted network.
+    httpHosts: ""
+    # S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY, both or neither (instance role, IRSA). Rendered into the Secret.
+    accessKeyId: ""
+    secretAccessKey: ""
+  gcs:
+    # GCS_BUCKET, required.
+    bucket: ""
+    # GCS_PROJECT_ID, optional.
+    projectId: ""
+    # GCS_SERVICE_ACCOUNT_KEY_BASE64, optional (workload identity otherwise). Rendered into the Secret.
+    serviceAccountKeyBase64: ""
+
+persistence:
+  postgres:
+    # The bundled database's volume. Retained when the StatefulSet is deleted or scaled down.
+    size: 10Gi
+    # Empty: the cluster's default StorageClass.
+    storageClass: ""
+  objects:
+    # storage.driver=filesystem only: every uploaded body. Kept on `helm uninstall`.
+    size: 20Gi
+    # ReadWriteMany drops the one-node pod affinity, on clusters whose StorageClass supports it.
+    accessMode: ReadWriteOnce
+    storageClass: ""
+  caddyData:
+    # Caddy's certificates and ACME account. Kept on `helm uninstall`.
+    size: 1Gi
+    storageClass: ""
+
+# App settings, by environment variable name. Each goes to the apps whose deploy/compose.yml service
+# passes it; anything else is refused. The chart sets the rest itself (origins, database, storage, secrets).
+# Defaults, which these override:
+#   NODE_ENV: production              LOG_LEVEL: info                 DATABASE_MAX_CONNECTIONS: "" (10)
+#   MCP_RATE_LIMIT_PER_MINUTE: "60"
+# Optional features, unset unless given here or through envFrom:
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (api);
+#   Apple:     APPLE_SERVICES_ID, APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY (api, all four or none),
+env: {}
+
+# Sources added to api and worker (the apps that read the optional features above), e.g.
+# [{secretRef: {name: exagram-features}}] for a Secret holding these keys:
+#   GOOGLE_CLIENT_*
+#   Apple:     APPLE_*
+# Both apps get every key in it. A key the chart already renders wins over envFrom; set those through env.
+envFrom: []
+
+# Requests are small; no limits by default.
+resources:
+  api:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  worker:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  usercontent:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  web:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  postgres:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  # The migrate Job's containers and the apps' wait-for-schema init containers.
+  migrate:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Applied to every Pod. The objects pod affinity (storage.driver=filesystem) is appended to `affinity`.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+
+tests:
+  # The `helm test` Pod's image, pinned by digest.
+  image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777

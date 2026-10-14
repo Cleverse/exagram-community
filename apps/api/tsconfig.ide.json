@@ -1,0 +1,9 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": { "composite": true, "emitDeclarationOnly": true, "outDir": "./dist-ide" },
+	"references": [
+		{ "path": "../../packages/core" },
+		{ "path": "../../packages/mcp" },
+		{ "path": "../../packages/redactor" }
+	]
+}

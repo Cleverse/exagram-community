@@ -1,0 +1,477 @@
+import { useState } from "react"
+import { Link, Navigate, useParams } from "react-router"
+
+import { MobileScreen, PushHeader } from "@/components/mobile/primitives"
+import { useSheet } from "@/components/mobile/sheet/context"
+import { NotFound } from "@/components/NotFound"
+import { IconCopy } from "@/components/ui/icons"
+import { Skeleton, SkeletonStatus } from "@/components/ui/Skeleton"
+import { edition } from "@/edition/edition"
+import { ACTION } from "@/features/audit/actionStyles"
+import { type AuditRow, isRedactionSwitchRow } from "@/features/audit/auditModel"
+import { useAuditRows } from "@/features/audit/hooks/useAuditRows"
+import { useAppleLink } from "@/features/auth/hooks/useAppleLink"
+import { useGoogleLink } from "@/features/auth/hooks/useGoogleLink"
+import { useMe } from "@/features/auth/hooks/useMe"
+import { useSignOut } from "@/features/auth/hooks/useSignIn"
+import { DELETE_ACCOUNT_SECTION } from "@/features/settings/deleteAccountCopy"
+import {
+	useNotificationPreferences,
+	useNotificationSwitches,
+	useSetNotificationPreferences,
+} from "@/features/settings/hooks/useNotificationPreferences"
+import { usePasswordResetAvailable, useResetLinks } from "@/features/settings/hooks/useResetLinks"
+import {
+	MobileCard as Card,
+	MobileField as Field,
+	MobileLabel as Label,
+	mobileInputClass,
+	MobileSwitchRow as SwitchRow,
+} from "@/features/settings/settingsParts"
+import { isSettingsTab, SETTINGS_TAB_LABEL, visibleSettingsTabs } from "@/features/settings/settingsTabs"
+import TeamPageMobile from "@/features/settings/team/TeamPage.mobile"
+import { useCreateTeamEntry } from "@/features/workspace/CreateTeamEntry"
+import { useCanCreateTeam } from "@/features/workspace/useCreateTeamMutation"
+import { useWorkspaceKind } from "@/features/workspace/useWorkspaceKind"
+import { paths, type SettingsTab } from "@/routes/paths"
+
+const NoTeamTab = () => {
+	const entry = useCreateTeamEntry()
+	return (
+		<>
+			<Label first>Team</Label>
+			<Card>
+				<div style={{ padding: "16px 14px" }}>
+					<div style={{ fontSize: 15, fontWeight: 600 }}>You don't have a team yet</div>
+					<div className="text-muted" style={{ fontSize: 14, lineHeight: 1.5, marginTop: 4 }}>
+						Create one to invite people into a Workspace you share. Your Personal Workspace stays yours.
+					</div>
+					<button
+						type="button"
+						onClick={entry.open}
+						className="mt-4 w-full bg-ink text-white active:bg-primary-hover"
+						style={{ height: 46, borderRadius: 6, fontSize: 15, fontWeight: 500 }}
+					>
+						Create team
+					</button>
+				</div>
+			</Card>
+			{entry.dialog}
+		</>
+	)
+}
+
+/** Desktop's "Reset a password" (`WorkspaceResetLinks.tsx`) in one column: the form, then the reset link just made. */
+const ResetLinkSection = ({ first }: { first: boolean }) => {
+	const resets = useResetLinks()
+	return (
+		<>
+			<Label first={first}>Reset a password</Label>
+			<form className="flex flex-col" style={{ gap: 10 }} onSubmit={resets.submit}>
+				<label htmlFor="reset-email-mobile" className="sr-only">
+					Member's email
+				</label>
+				<input
+					id="reset-email-mobile"
+					type="email"
+					placeholder="name@example.com"
+					className={mobileInputClass}
+					style={{ height: 44, fontSize: 15 }}
+					value={resets.email}
+					onChange={(event) => resets.setEmail(event.target.value)}
+					required
+				/>
+				<button
+					type="submit"
+					disabled={resets.create.isPending || !resets.email.trim()}
+					className="bg-ink text-white active:bg-primary-hover disabled:opacity-60"
+					style={{ height: 44, borderRadius: 6, fontSize: 14.5, fontWeight: 500 }}
+				>
+					Create reset link
+				</button>
+			</form>
+			{resets.errorMessage ? (
+				<p role="alert" className="text-danger" style={{ fontSize: 14, margin: "10px 0 0" }}>
+					{resets.errorMessage}
+				</p>
+			) : null}
+			{resets.issued ? (
+				<div style={{ marginTop: 12 }}>
+					<Card>
+						<Field
+							label={`Reset link for ${resets.issued.email}, shown only now; works once, for 1 hour`}
+							trailing={
+								<button
+									type="button"
+									aria-label="Copy reset link"
+									onClick={() => resets.issued && resets.copy(resets.issued.url)}
+									className="grid flex-none place-items-center text-secondary active:bg-hover"
+									style={{ width: 44, height: 44 }}
+								>
+									<IconCopy size={16} />
+								</button>
+							}
+						>
+							<span className="font-mono text-secondary" style={{ fontSize: 13 }}>
+								{resets.issued.url}
+							</span>
+						</Field>
+					</Card>
+				</div>
+			) : null}
+		</>
+	)
+}
+
+const GeneralTab = () => {
+	const me = useMe()
+	const passwordReset = usePasswordResetAvailable(me.data?.isAdmin === true)
+	const team = useWorkspaceKind() === "team"
+	const google = useGoogleLink()
+	const apple = useAppleLink()
+	const signOut = useSignOut()
+	const sheet = useSheet()
+	const workspaceShown = edition.WorkspaceSection !== null
+	const resetShown = me.data?.isAdmin === true && passwordReset && team
+	const notificationEmailShown =
+		me.data?.isAdmin === true && team && edition.WorkspaceNotificationEmailSettings !== null
+
+	return (
+		<>
+			{edition.WorkspaceSection ? <edition.WorkspaceSection variant="mobile" /> : null}
+
+			{resetShown ? <ResetLinkSection first={!workspaceShown} /> : null}
+			{notificationEmailShown && edition.WorkspaceNotificationEmailSettings ? (
+				<edition.WorkspaceNotificationEmailSettings variant="mobile" />
+			) : null}
+
+			<Label first={!(workspaceShown || resetShown || notificationEmailShown)}>Account</Label>
+			<Card>
+				<Field label="Name">{me.data?.name}</Field>
+				<Field label="Email">{me.data?.email}</Field>
+				{google.shown ? <Field label="Google">{me.data?.googleLinked ? "Connected" : "Not connected"}</Field> : null}
+				{apple.shown ? <Field label="Apple">{apple.linked ? "Connected" : "Not connected"}</Field> : null}
+			</Card>
+
+			<div className="flex flex-col" style={{ gap: 10, marginTop: 20 }}>
+				{google.available ? (
+					<a
+						href={google.href}
+						className="grid place-items-center bg-ink text-white hover:text-white active:bg-primary-hover"
+						style={{ height: 44, borderRadius: 6, fontSize: 14.5, fontWeight: 500, textDecoration: "none" }}
+					>
+						Connect Google
+					</a>
+				) : null}
+				{apple.available ? (
+					<a
+						href={apple.href}
+						className="grid place-items-center bg-ink text-white hover:text-white active:bg-primary-hover"
+						style={{ height: 44, borderRadius: 6, fontSize: 14.5, fontWeight: 500, textDecoration: "none" }}
+					>
+						Connect Apple
+					</a>
+				) : null}
+				<button
+					type="button"
+					onClick={() => signOut.mutate()}
+					disabled={signOut.isPending}
+					className="border border-line-strong text-ink active:bg-hover disabled:opacity-60"
+					style={{ height: 44, fontSize: 14.5, fontWeight: 500 }}
+				>
+					Sign out
+				</button>
+			</div>
+
+			<Label>Delete account</Label>
+			<p className="m-0 text-muted" style={{ fontSize: 14, lineHeight: 1.5 }}>
+				{DELETE_ACCOUNT_SECTION}
+			</p>
+			<button
+				type="button"
+				onClick={() => sheet.open("deleteAccount", {})}
+				className="w-full bg-danger-bg text-danger active:bg-danger-hover"
+				style={{ height: 44, marginTop: 12, fontSize: 14.5, fontWeight: 500 }}
+			>
+				Delete account
+			</button>
+		</>
+	)
+}
+
+/**
+ * Desktop's Notifications tab in one column: the intro, one switch row per kind, then Notification Email. Every member
+ * has it; each control saves as it moves.
+ */
+const NotificationsTab = () => (
+	<>
+		<p className="m-0 text-pretty text-body" style={{ fontSize: 15, lineHeight: 1.55 }}>
+			Notifications appear in the Exagram apps for Mac and iPhone. They name the file or folder and who acted, never
+			what it says.
+		</p>
+		<section aria-label="Notify me when">
+			<Label>Notify me when</Label>
+			<AppSwitches />
+		</section>
+		{edition.NotificationEmailSettings ? <edition.NotificationEmailSettings variant="mobile" /> : null}
+	</>
+)
+
+const AppSwitches = () => {
+	const preferences = useNotificationPreferences()
+	const update = useSetNotificationPreferences()
+	const switches = useNotificationSwitches()
+
+	return preferences.isPending ? (
+		<SkeletonStatus label="Loading notification settings…" className="flex flex-col" style={{ gap: 10 }}>
+			<Skeleton height={64} radius={10} />
+			<Skeleton height={64} radius={10} />
+		</SkeletonStatus>
+	) : preferences.isError ? (
+		<p role="alert" className="m-0 text-danger" style={{ fontSize: 14 }}>
+			{preferences.error.message}
+		</p>
+	) : (
+		<div className="flex flex-col" style={{ gap: 10 }}>
+			{switches.map(({ field, label, hint }) => (
+				<SwitchRow
+					key={field}
+					on={preferences.data[field]}
+					label={label}
+					hint={hint}
+					onToggle={() => update.mutate({ ...preferences.data, [field]: !preferences.data[field] })}
+				/>
+			))}
+		</div>
+	)
+}
+
+/** `formatAuditTime`'s "Today 14:22" / "Fri 15:40" / "12 Sep 14:22", split into its day and its clock. */
+const splitAuditTime = (time: string) => {
+	const at = time.lastIndexOf(" ")
+	return at < 0 ? { day: time, clock: "" } : { day: time.slice(0, at), clock: time.slice(at + 1) }
+}
+
+/** Rows in order, broken into runs of one day each. */
+const byDay = (rows: AuditRow[]) => {
+	const groups: { day: string; rows: AuditRow[] }[] = []
+	for (const row of rows) {
+		const { day } = splitAuditTime(row.time)
+		const last = groups.at(-1)
+		if (last?.day === day) last.rows.push(row)
+		else groups.push({ day, rows: [row] })
+	}
+	return groups
+}
+
+/** How many requests show before "Show more", and how many each tap adds. */
+const AUDIT_STEP = 30
+
+/**
+ * One request: the action pill, the origin and the time, then what it touched and who asked.
+ * The design's "N spans redacted" line is left out: the API ledgers no redaction counts.
+ */
+const AuditLine = ({ row }: { row: AuditRow }) => {
+	const tone = ACTION[row.action]
+	return (
+		<li className="flex flex-col" style={{ padding: "10px 0", gap: 5 }}>
+			<div className="flex items-center" style={{ gap: 8, fontSize: 12 }}>
+				<span
+					className="font-mono"
+					style={{ fontWeight: 500, padding: "2px 6px", borderRadius: 4, background: tone.bg, color: tone.fg }}
+				>
+					{row.action}
+				</span>
+				<span className="truncate text-secondary" style={{ fontWeight: 500 }}>
+					{row.client}
+				</span>
+				<span className="flex-1" />
+				<span className="font-mono flex-none text-muted-2">{splitAuditTime(row.time).clock}</span>
+			</div>
+			<div className="text-body" style={{ fontSize: 14, lineHeight: 1.45 }}>
+				{row.doc}
+			</div>
+			<div className="truncate text-muted-2" style={{ fontSize: 12 }}>
+				{row.user}
+			</div>
+		</li>
+	)
+}
+
+/** Audit: the Ledger's last 90 days as desktop reads it (`useAuditRows`), grouped by day. */
+const AuditTab = () => {
+	const audit = useAuditRows()
+	const redactionOn = edition.useRedactionCapability() === "enabled"
+	const state =
+		audit.status === "ready" && !redactionOn
+			? { ...audit, rows: audit.rows.filter((row) => !isRedactionSwitchRow(row)) }
+			: audit
+	const [shown, setShown] = useState(AUDIT_STEP)
+
+	return (
+		<>
+			<p className="m-0 text-muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
+				Every request, whoever made it. Kept for 90 days.
+			</p>
+			{state.status === "loading" ? (
+				<SkeletonStatus label="Loading the audit log…" className="flex flex-col" style={{ gap: 14, marginTop: 18 }}>
+					{[0, 1, 2].map((index) => (
+						<span key={index} className="flex flex-col" style={{ gap: 6 }}>
+							<Skeleton width="45%" height={12} />
+							<Skeleton width="80%" height={14} />
+						</span>
+					))}
+				</SkeletonStatus>
+			) : state.status === "forbidden" ? (
+				<p className="text-muted" style={{ fontSize: 14, marginTop: 18 }}>
+					Only workspace admins can read the audit log.
+				</p>
+			) : state.status === "error" ? (
+				<div role="alert" style={{ marginTop: 18 }}>
+					<p className="m-0 text-danger" style={{ fontSize: 14 }}>
+						{state.message}
+					</p>
+					<button
+						type="button"
+						onClick={state.retry}
+						className="border border-line-strong text-ink active:bg-hover"
+						style={{ marginTop: 10, height: 40, padding: "0 14px", fontSize: 14, fontWeight: 500 }}
+					>
+						Retry
+					</button>
+				</div>
+			) : state.rows.length === 0 ? (
+				<p className="text-muted" style={{ fontSize: 14, marginTop: 18 }}>
+					No requests in the last 90 days.
+				</p>
+			) : (
+				<>
+					{byDay(state.rows.slice(0, shown)).map((group) => (
+						<section key={group.day} aria-label={group.day}>
+							<h3 className="m-0 text-muted-2" style={{ padding: "14px 0 4px", fontSize: 13, fontWeight: 500 }}>
+								{group.day}
+							</h3>
+							<ul className="m-0 list-none p-0">
+								{group.rows.map((row) => (
+									<AuditLine key={row.id} row={row} />
+								))}
+							</ul>
+						</section>
+					))}
+					{state.rows.length > shown ? (
+						<button
+							type="button"
+							onClick={() => setShown((current) => current + AUDIT_STEP)}
+							className="w-full border border-line-strong text-ink active:bg-hover"
+							style={{ marginTop: 12, height: 44, fontSize: 14, fontWeight: 500 }}
+						>
+							Show more
+						</button>
+					) : null}
+				</>
+			)}
+		</>
+	)
+}
+
+/**
+ * The tab strip: 44px, 14/500, the current tab ink with a 2px ink underline. Each is a link to
+ * its `/settings/<tab>` address that replaces the entry, so Back leaves Settings rather than stepping tabs.
+ */
+const Tabs = ({ current, tabs }: { current: SettingsTab; tabs: readonly SettingsTab[] }) => (
+	<nav
+		aria-label="Settings"
+		className="flex flex-none overflow-x-auto border-b border-row-line"
+		style={{ gap: 18, padding: "0 16px", marginTop: 14 }}
+	>
+		{tabs.map((tab) => {
+			const on = tab === current
+			return (
+				<Link
+					key={tab}
+					to={paths.settings(tab)}
+					replace
+					aria-current={on ? "page" : undefined}
+					className={on ? "text-ink hover:text-ink" : "text-muted hover:text-muted"}
+					style={{
+						height: 44,
+						lineHeight: "44px",
+						fontSize: 14,
+						fontWeight: 500,
+						whiteSpace: "nowrap",
+						flex: "none",
+						textDecoration: "none",
+						boxShadow: on ? "inset 0 -2px 0 var(--color-ink)" : "none",
+					}}
+				>
+					{SETTINGS_TAB_LABEL[tab]}
+				</Link>
+			)
+		})}
+	</nav>
+)
+
+/**
+ * Settings (`/settings/:tab`), pushed from the Account drawer: "Back to Exagram", the title and
+ * Workspace, then desktop's tabs, each on the same hooks as desktop.
+ */
+export default function SettingsPageMobile() {
+	const { tab } = useParams()
+	const me = useMe()
+	const capability = edition.useRedactionCapability()
+	const kind = useWorkspaceKind()
+	const line = edition.accountLine(kind, me.data?.workspaceName)
+	const teamless = useCanCreateTeam()
+	if (!isSettingsTab(tab)) return <NotFound />
+	if (kind === undefined) return null
+	// Security waits for the answer: redirecting while it loads would bounce an admin off a tab that is on.
+	if (
+		tab === "security" &&
+		capability === "loading" &&
+		visibleSettingsTabs(edition, { redaction: true, kind }).includes(tab)
+	)
+		return null
+	const tabs = visibleSettingsTabs(edition, { redaction: capability === "enabled", kind, canCreateTeam: teamless })
+	if (!tabs.includes(tab)) return <Navigate to={paths.settings("general")} replace />
+	const Page = edition.settingsPages[tab]?.mobile
+
+	return (
+		<MobileScreen
+			push
+			label={SETTINGS_TAB_LABEL[tab]}
+			header={
+				<>
+					<PushHeader to={paths.library} backLabel="Back to Exagram" />
+					<div className="flex-none" style={{ padding: "18px 16px 0" }}>
+						<h1 className="m-0" style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.012em" }}>
+							Settings
+						</h1>
+						{line ? (
+							<div className="truncate text-muted" style={{ fontSize: 13, marginTop: 2 }}>
+								{line}
+							</div>
+						) : null}
+					</div>
+					{tabs.length > 1 ? <Tabs current={tab} tabs={tabs} /> : null}
+				</>
+			}
+			bodyStyle={{ padding: "14px 16px 40px" }}
+		>
+			{tab === "general" ? (
+				<GeneralTab />
+			) : tab === "team" ? (
+				teamless ? (
+					<NoTeamTab />
+				) : (
+					<TeamPageMobile />
+				)
+			) : tab === "notifications" ? (
+				<NotificationsTab />
+			) : Page ? (
+				<Page />
+			) : (
+				<AuditTab />
+			)}
+		</MobileScreen>
+	)
+}

@@ -1,0 +1,130 @@
+{{- $app := include "exagram.appHost" . }}
+{{- $uc := include "exagram.ucHost" . }}
+{{- $acme := eq .Values.tls.mode "acme" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "exagram.componentName" (list . "web") }}
+  labels:
+    {{- include "exagram.labels" (list . "web") | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $acme }}
+  # Caddy terminates TLS itself and needs the caller's address as the TCP peer, which it writes to
+  # X-Real-IP for the api's request logs and rate limits; the default Cluster policy would show a node address.
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  {{- else }}
+  type: ClusterIP
+  {{- end }}
+  selector:
+    {{- include "exagram.selectorLabels" (list . "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    {{- if $acme }}
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+    {{- if .Values.tls.http3 }}
+    - name: http3
+      port: 443
+      targetPort: http3
+      protocol: UDP
+    {{- end }}
+    {{- end }}
+---
+# The web image: Caddy with the SPA, routing by Host and path to api and usercontent with the same
+# Caddyfile compose uses. One replica, Recreate: caddy-data is ReadWriteOnce.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "exagram.componentName" (list . "web") }}
+  labels:
+    {{- include "exagram.labels" (list . "web") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "exagram.selectorLabels" (list . "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "exagram.labels" (list . "web") | nindent 8 }}
+      {{- include "exagram.podAnnotations" . | nindent 6 }}
+    spec:
+      {{- include "exagram.imagePullSecrets" . | nindent 6 }}
+      # Caddy runs as uid 1000 rather than the image's root. The image's caddy binary carries the file
+      # capability cap_net_bind_service, which the kernel refuses to exec unless the container keeps it.
+      {{- include "exagram.podSecurityContext" (dict "uid" 1000 "pvc" true) | nindent 6 }}
+      {{- include "exagram.scheduling" (dict "ctx" . "objects" false) | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ include "exagram.image" (list . "web") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: APP_HOST
+              value: {{ $app | quote }}
+            - name: UC_HOST
+              value: {{ $uc | quote }}
+            {{- if $acme }}
+            - name: ACME_EMAIL
+              value: {{ .Values.acmeEmail | quote }}
+            {{- else }}
+            # deploy/compose.tls-external.yml's settings: plain HTTP on :80 behind the Ingress.
+            - name: EXAGRAM_TLS
+              value: external
+            - name: EXAGRAM_SITE_SCHEME
+              value: "http://"
+            - name: EXAGRAM_CLIENT_IP_HEADER
+              value: {{ .Values.ingress.clientIpHeader | quote }}
+            {{- with .Values.ingress.trustedProxyCidrs }}
+            - name: EXAGRAM_TRUSTED_PROXIES
+              value: {{ join " " . | quote }}
+            {{- end }}
+            {{- end }}
+            # Caddyfile placeholders (not app env): this release's Service names in place of compose's.
+            - name: EXAGRAM_API_UPSTREAM
+              value: "{{ include "exagram.componentName" (list . "api") }}:3000"
+            - name: EXAGRAM_USERCONTENT_UPSTREAM
+              value: "{{ include "exagram.componentName" (list . "usercontent") }}:3002"
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            {{- if $acme }}
+            - name: https
+              containerPort: 443
+              protocol: TCP
+            - name: http3
+              containerPort: 443
+              protocol: UDP
+            {{- end }}
+          volumeMounts:
+            # XDG_DATA_HOME: certificates and the ACME account.
+            - name: caddy-data
+              mountPath: /data
+            # XDG_CONFIG_HOME: Caddy's autosaved config, rebuilt on every start.
+            - name: caddy-config
+              mountPath: /config
+          resources:
+            {{- toYaml .Values.resources.web | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
+      volumes:
+        - name: caddy-data
+          persistentVolumeClaim:
+            claimName: {{ include "exagram.componentName" (list . "caddy-data") }}
+        - name: caddy-config
+          emptyDir: {}

@@ -1,0 +1,9 @@
+.DS_Store
+*.swp
+*.bak
+*.tmp
+*.orig
+# Values files for CI renders, not for installs.
+ci/
+# Edition variants of chart files: never rendered as they are.
+*.community.*

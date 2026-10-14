@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Exagram doesn't work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Remove passwords, keys and database URLs from everything you paste: `.env`, the Secret and
+        the logs can hold them. A security problem goes through the Security tab instead; see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Choose …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description:
+        "`cat VERSION` in the Compose folder, `helm list --namespace exagram`, or the commit for a local checkout."
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install
+      options:
+        - Docker Compose
+        - Helm
+        - Local checkout (docker compose up)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description:
+        The TLS mode, whether the database and the object store are bundled or your own, and what sits in front (proxy,
+        tunnel, load balancer).
+  - type: textarea
+    id: verify
+    attributes:
+      label: Checks
+      description: The output of `./verify.sh`, or `helm test exagram --namespace exagram --logs`.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description:
+        The failing service around the time of the problem, for example `docker compose logs --since 30m <service>` or
+        `kubectl --namespace exagram logs deploy/exagram-<app> --since 30m`.
+      render: text

@@ -1,0 +1,17 @@
+{
+	"files": [],
+	"references": [
+		{ "path": "packages/redactor" },
+		{ "path": "packages/core" },
+		{ "path": "packages/parser" },
+		{ "path": "packages/api-client" },
+		{ "path": "packages/mcp" },
+		{ "path": "apps/api/tsconfig.ide.json" },
+		{ "path": "apps/usercontent/tsconfig.ide.json" },
+		{ "path": "apps/web/tsconfig.ide.json" },
+		{ "path": "apps/worker/tsconfig.ide.json" },
+		{ "path": "packages/core/tsconfig.ide.json" },
+		{ "path": "packages/api-client/tsconfig.ide.json" },
+		{ "path": "packages/mcp/tsconfig.ide.json" }
+	]
+}

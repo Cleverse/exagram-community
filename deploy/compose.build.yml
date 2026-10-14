@@ -1,0 +1,35 @@
+# Source builds: every image built from this checkout (context ..) under a local tag, in place of
+# the published one. Add it to COMPOSE_FILE after the other layers and run `docker compose build`;
+# scripts/selfhost-e2e.sh does. A release bundle doesn't ship this file.
+
+services:
+  preflight:
+    image: exagram-selfhost/api:local
+    build:
+      context: ..
+      target: api
+  migrate:
+    image: exagram-selfhost/migrate:local
+    build:
+      context: ..
+      target: migrate
+  api:
+    image: exagram-selfhost/api:local
+    build:
+      context: ..
+      target: api
+  worker:
+    image: exagram-selfhost/worker:local
+    build:
+      context: ..
+      target: worker
+  usercontent:
+    image: exagram-selfhost/usercontent:local
+    build:
+      context: ..
+      target: usercontent
+  caddy:
+    image: exagram-selfhost/web:local
+    build:
+      context: ..
+      target: web

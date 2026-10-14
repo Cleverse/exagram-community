@@ -1,0 +1,442 @@
+name: Release Self-hosted images
+
+# Tag vX.Y.Z publishes, for linux/amd64 and linux/arm64:
+#   1. images: ghcr.io/cleverse/exagram-{api,worker,usercontent,web,migrate}:vX.Y.Z, with SBOM and
+#      max provenance attestations. Never a `latest` tag.
+#   2. scan: Trivy on every image and platform; a CRITICAL finding that has a fix fails the release
+#      before the bundle exists.
+#   3. bundle: ghcr.io/cleverse/exagram-deploy:vX.Y.Z, whose compose.yml pins each image above to
+#      vX.Y.Z@sha256:<index digest> (Dockerfile `deploy` stage), then cosign keyless-signs all six
+#      digests with this workflow's identity. Verify any of them with:
+#
+#        cosign verify ghcr.io/cleverse/exagram-deploy:vX.Y.Z \
+#          --certificate-identity https://github.com/Cleverse/exagram-community/.github/workflows/release-selfhost.yml@refs/tags/vX.Y.Z \
+#          --certificate-oidc-issuer https://token.actions.githubusercontent.com
+#
+#   4. chart: oci://ghcr.io/cleverse/charts/exagram:X.Y.Z (no `v`), published after every image is
+#      scanned and signed. appVersion is vX.Y.Z, the image tag, and values.yaml pins each of the five
+#      image digests. The chart digest is cosign keyless-signed with the same identity as above.
+#
+# A failed scan or signing leaves tagged images without a signed bundle; such a release is not
+# installable by the documented path. Fix forward with a new patch tag.
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+permissions: {}
+
+concurrency:
+  group: release-selfhost-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    if: github.repository == 'Cleverse/exagram-community'
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      api: ${{ steps.api.outputs.digest }}
+      worker: ${{ steps.worker.outputs.digest }}
+      usercontent: ${{ steps.usercontent.outputs.digest }}
+      web: ${{ steps.web.outputs.digest }}
+      migrate: ${{ steps.migrate.outputs.digest }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # The signature names the tag, not the branch, so only a commit already on main may be released.
+      - name: Tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA is not on main"
+            exit 1
+          fi
+
+      - name: Version from the tag
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version="$REF_NAME"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag $REF_NAME is not vX.Y.Z"
+            exit 1
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One builder for all five: api, worker and usercontent share the server-build stage.
+      - name: Build and push exagram-api
+        id: api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/cleverse/exagram-api:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=exagram-api
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.title=exagram-api
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=selfhost-api
+          cache-to: type=gha,mode=max,scope=selfhost-api
+
+      - name: Build and push exagram-worker
+        id: worker
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: worker
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/cleverse/exagram-worker:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=exagram-worker
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.title=exagram-worker
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=selfhost-worker
+          cache-to: type=gha,mode=max,scope=selfhost-worker
+
+      - name: Build and push exagram-usercontent
+        id: usercontent
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: usercontent
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/cleverse/exagram-usercontent:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=exagram-usercontent
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.title=exagram-usercontent
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=selfhost-usercontent
+          cache-to: type=gha,mode=max,scope=selfhost-usercontent
+
+      - name: Build and push exagram-web
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: web
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/cleverse/exagram-web:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=exagram-web
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.title=exagram-web
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=selfhost-web
+          cache-to: type=gha,mode=max,scope=selfhost-web
+
+      - name: Build and push exagram-migrate
+        id: migrate
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: migrate
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/cleverse/exagram-migrate:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=exagram-migrate
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.title=exagram-migrate
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=selfhost-migrate
+          cache-to: type=gha,mode=max,scope=selfhost-migrate
+
+  scan:
+    needs: images
+    runs-on: ubuntu-latest
+    if: github.repository == 'Cleverse/exagram-community'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, usercontent, web, migrate]
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy exagram-${{ matrix.image }} (${{ matrix.platform }})
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+        with:
+          image-ref: ghcr.io/cleverse/exagram-${{ matrix.image }}@${{ needs.images.outputs[matrix.image] }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  bundle:
+    needs: [images, scan]
+    runs-on: ubuntu-latest
+    if: github.repository == 'Cleverse/exagram-community'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The Dockerfile's deploy stage fails unless every image gets a sha256 digest.
+      - name: Build and push exagram-deploy
+        id: deploy
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: deploy
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            EXAGRAM_VERSION=${{ needs.images.outputs.version }}
+            IMAGE_DIGESTS=api=${{ needs.images.outputs.api }} worker=${{ needs.images.outputs.worker }} usercontent=${{ needs.images.outputs.usercontent }} web=${{ needs.images.outputs.web }} migrate=${{ needs.images.outputs.migrate }}
+          tags: ghcr.io/cleverse/exagram-deploy:${{ needs.images.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=exagram-deploy
+            org.opencontainers.image.version=${{ needs.images.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.title=exagram-deploy
+            index:org.opencontainers.image.version=${{ needs.images.outputs.version }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Trivy exagram-deploy (linux/amd64)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ghcr.io/cleverse/exagram-deploy@${{ steps.deploy.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy exagram-deploy (linux/arm64)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          image-ref: ghcr.io/cleverse/exagram-deploy@${{ steps.deploy.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.2
+
+      # Keyless: the certificate names this workflow at this tag; the signature goes to the public
+      # Rekor log.
+      - name: Sign every image digest
+        env:
+          DIGESTS: >-
+            api=${{ needs.images.outputs.api }} worker=${{ needs.images.outputs.worker }} usercontent=${{
+            needs.images.outputs.usercontent }} web=${{ needs.images.outputs.web }} migrate=${{
+            needs.images.outputs.migrate }} deploy=${{ steps.deploy.outputs.digest }}
+        run: |
+          for pair in $DIGESTS; do
+            name=${pair%%=*}
+            digest=${pair#*=}
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::no digest for exagram-$name: '$digest'"
+              exit 1
+            fi
+            cosign sign --yes "ghcr.io/cleverse/exagram-$name@$digest"
+          done
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.images.outputs.version }}
+        run: |
+          {
+            echo "### Self-hosted $VERSION"
+            echo '```'
+            echo "cosign verify ghcr.io/cleverse/exagram-deploy:$VERSION \\"
+            echo "  --certificate-identity ${{ github.server_url }}/${{ github.repository }}/.github/workflows/release-selfhost.yml@refs/tags/$VERSION \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo "docker run --rm ghcr.io/cleverse/exagram-deploy:$VERSION | tar x"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  chart:
+    needs: [images, scan, bundle]
+    runs-on: ubuntu-latest
+    if: github.repository == 'Cleverse/exagram-community'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.22.0
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.2
+
+      - name: Log in to GHCR for cosign
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package the chart
+        id: package
+        env:
+          VERSION: ${{ needs.images.outputs.version }}
+          DIGESTS: >-
+            api=${{ needs.images.outputs.api }} worker=${{ needs.images.outputs.worker }} usercontent=${{
+            needs.images.outputs.usercontent }} web=${{ needs.images.outputs.web }} migrate=${{
+            needs.images.outputs.migrate }}
+        run: |
+          chart_version="${VERSION#v}"
+          yq --version
+          for pair in $DIGESTS; do
+            name=${pair%%=*}
+            digest=${pair#*=}
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::no digest for exagram-$name: '$digest'"
+              exit 1
+            fi
+            NAME="$name" DIGEST="$digest" yq -i '.image.digest[strenv(NAME)] = strenv(DIGEST)' deploy/helm/exagram/values.yaml
+          done
+
+          helm lint deploy/helm/exagram --set appHost=exagram.example.com --set acmeEmail=admin@example.com
+          helm package deploy/helm/exagram --version "$chart_version" --app-version "$VERSION" --destination "$RUNNER_TEMP/chart"
+          tgz="$RUNNER_TEMP/chart/exagram-$chart_version.tgz"
+
+          rendered=$(helm template t "$tgz" --set appHost=exagram.example.com --set acmeEmail=admin@example.com)
+          for pair in $DIGESTS; do
+            name=${pair%%=*}
+            digest=${pair#*=}
+            ref="ghcr.io/cleverse/exagram-$name:$VERSION@$digest"
+            if ! grep -qF -- "$ref" <<<"$rendered"; then
+              echo "::error::the packaged chart does not render $ref"
+              exit 1
+            fi
+          done
+
+          echo "chart_version=$chart_version" >>"$GITHUB_OUTPUT"
+          echo "tgz=$tgz" >>"$GITHUB_OUTPUT"
+
+      # Keyless, like the images: the certificate names this workflow at this tag.
+      - name: Push and sign the chart
+        id: push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          TGZ: ${{ steps.package.outputs.tgz }}
+        run: |
+          printf '%s' "$GITHUB_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
+          pushed=$(helm push "$TGZ" oci://ghcr.io/cleverse/charts 2>&1)
+          echo "$pushed"
+          digest=$(awk '/^Digest: /{print $2}' <<<"$pushed")
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::no digest in the helm push output: '$digest'"
+            exit 1
+          fi
+          cosign sign --yes "ghcr.io/cleverse/charts/exagram@$digest"
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.images.outputs.version }}
+          CHART_VERSION: ${{ steps.package.outputs.chart_version }}
+        run: |
+          {
+            echo "### Helm chart $CHART_VERSION"
+            echo '```'
+            echo "cosign verify ghcr.io/cleverse/charts/exagram:$CHART_VERSION \\"
+            echo "  --certificate-identity ${{ github.server_url }}/${{ github.repository }}/.github/workflows/release-selfhost.yml@refs/tags/$VERSION \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo "helm install exagram oci://ghcr.io/cleverse/charts/exagram --version $CHART_VERSION --namespace exagram --create-namespace \\"
+            echo "  --set appHost=exagram.example.com --set acmeEmail=admin@example.com --wait --wait-for-jobs --timeout 15m"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"

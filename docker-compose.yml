@@ -1,0 +1,126 @@
+name: exagram
+
+# Per-workspace node_modules dirs are real directories (pnpm symlinks), not covered by the root
+# `/app/node_modules` anonymous volume: without these, the `.:/app` bind mount shadows them with
+# the host's (nonexistent) copies, and pnpm tries to repair on every container start, aborting with
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY since there's no TTY to confirm the removal.
+x-dev-volumes: &dev-volumes
+  - .:/app
+  - /app/node_modules
+  - /app/apps/api/node_modules
+  - /app/apps/worker/node_modules
+  - /app/apps/usercontent/node_modules
+  - /app/apps/web/node_modules
+  - /app/packages/api-client/node_modules
+  - /app/packages/core/node_modules
+  - /app/packages/dotrc/node_modules
+  - /app/packages/mcp/node_modules
+  - /app/packages/parser/node_modules
+  - /app/packages/redactor/node_modules
+
+# api, worker and usercontent all read bodies, so they share one objects volume. `environment:`
+# overrides `.env`, whose STORAGE_DIR is for running the apps on the host.
+x-app-volumes: &app-volumes
+  - .:/app
+  - /app/node_modules
+  - /app/apps/api/node_modules
+  - /app/apps/worker/node_modules
+  - /app/apps/usercontent/node_modules
+  - /app/apps/web/node_modules
+  - /app/packages/api-client/node_modules
+  - /app/packages/core/node_modules
+  - /app/packages/dotrc/node_modules
+  - /app/packages/mcp/node_modules
+  - /app/packages/parser/node_modules
+  - /app/packages/redactor/node_modules
+  - objects-data:/var/lib/exagram/objects
+
+x-filesystem-storage: &filesystem-storage
+  STORAGE_DRIVER: filesystem
+  STORAGE_DIR: /var/lib/exagram/objects
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: exagram
+      POSTGRES_PASSWORD: exagram
+      POSTGRES_DB: exagram
+    ports:
+      - "127.0.0.1:${EXAGRAM_PG_PORT:-25432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exagram -d exagram"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      target: dev
+    command: ["pnpm", "--filter", "@exagram/api", "dev"]
+    env_file: .env
+    environment:
+      HTTP_PORT: "3000"
+      DATABASE_URL: postgres://exagram:exagram@postgres:5432/${EXAGRAM_DB_NAME:-exagram}
+      DATABASE_PLAINTEXT_HOSTS: postgres
+      <<: *filesystem-storage
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+
+  worker:
+    build:
+      context: .
+      target: dev
+    command: ["pnpm", "--filter", "@exagram/worker", "dev"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://exagram:exagram@postgres:5432/${EXAGRAM_DB_NAME:-exagram}
+      DATABASE_PLAINTEXT_HOSTS: postgres
+      <<: *filesystem-storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+
+  usercontent:
+    build:
+      context: .
+      target: dev
+    command: ["pnpm", "--filter", "@exagram/usercontent", "dev"]
+    env_file: .env
+    environment:
+      HTTP_PORT: "3002"
+      DATABASE_URL: postgres://exagram:exagram@postgres:5432/${EXAGRAM_DB_NAME:-exagram}
+      DATABASE_PLAINTEXT_HOSTS: postgres
+      <<: *filesystem-storage
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+
+  web:
+    build:
+      context: .
+      target: dev
+    command: ["pnpm", "--filter", "@exagram/web", "dev"]
+    environment:
+      VITE_API_PROXY_TARGET: http://api:3000
+      VITE_USERCONTENT_ORIGIN: http://localhost:3002
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes: *dev-volumes
+
+volumes:
+  postgres-data:
+  objects-data:

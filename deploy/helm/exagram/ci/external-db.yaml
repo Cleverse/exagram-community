@@ -1,0 +1,8 @@
+# Brought Postgres over verified TLS with the system roots.
+appHost: exagram.example.com
+acmeEmail: admin@example.com
+database:
+  bundled: false
+  external:
+    url: postgres://exagram_app:app-password@db.example.com:5432/exagram?sslmode=verify-full&search_path=exagram%2Cpublic
+    migrateUrl: postgres://exagram_owner:owner-password@db.example.com:5432/exagram?sslmode=verify-full&x-migrations-table-quoted=1&x-migrations-table=%22public%22.%22schema_migrations%22

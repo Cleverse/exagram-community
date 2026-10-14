@@ -1,0 +1,73 @@
+import { composeServiceEnvKeys } from "@exagram/core/test/compose-env"
+import { describe, expect, it } from "vitest"
+
+import { parseEnv } from "./env"
+import { EDITION_OPTIONAL, EDITION_PLACEHOLDERS } from "./env.selfhost.fixtures"
+
+// Value per key deploy/compose*.yml can pass this service, shaped to satisfy env.ts's schema.
+const PLACEHOLDERS: Record<string, string> = {
+	NODE_ENV: "production",
+	LOG_LEVEL: "info",
+	DATABASE_URL: "postgres://exagram:exagram@localhost:5432/exagram",
+	DATABASE_MAX_CONNECTIONS: "10",
+	DATABASE_PLAINTEXT_HOSTS: "postgres",
+	DATABASE_CA_SERVER_SPECIFIC: "false",
+	STORAGE_DRIVER: "filesystem",
+	STORAGE_DIR: "/var/lib/exagram/objects",
+	S3_ENDPOINT: "https://s3.example.test",
+	S3_REGION: "us-east-1",
+	S3_BUCKET: "exagram",
+	S3_ACCESS_KEY_ID: "minioadmin",
+	S3_SECRET_ACCESS_KEY: "minioadmin",
+	S3_FORCE_PATH_STYLE: "true",
+	S3_HTTP_HOSTS: "minio.internal",
+	GCS_BUCKET: "exagram",
+	GCS_PROJECT_ID: "exagram-test",
+	GCS_SERVICE_ACCOUNT_KEY_BASE64: Buffer.from(
+		JSON.stringify({ client_email: "exagram@exagram-test.iam.gserviceaccount.com", private_key: "test-key" }),
+	).toString("base64"),
+	WEB_ORIGIN: "https://app.example.test",
+}
+
+const OPTIONAL =
+	/^(DATABASE_MAX_CONNECTIONS|DATABASE_PLAINTEXT_HOSTS|DATABASE_CA_SERVER_SPECIFIC|S3_[A-Z_]+|GCS_[A-Z_]+)$/
+
+const placeholderFor = (key: string): string | undefined => PLACEHOLDERS[key] ?? EDITION_PLACEHOLDERS[key]
+const isOptional = (key: string): boolean => OPTIONAL.test(key) || EDITION_OPTIONAL.includes(key)
+
+describe("self-hosted env contract", () => {
+	it("accepts every key compose.yml's worker service allowlist passes", () => {
+		const keys = composeServiceEnvKeys("worker")
+		expect(keys.length).toBeGreaterThan(0)
+
+		const source: Record<string, string> = {}
+		for (const key of keys) {
+			const placeholder = placeholderFor(key)
+			if (placeholder === undefined) {
+				throw new Error(`no placeholder for compose.yml worker key: ${key}`)
+			}
+			source[key] = placeholder
+		}
+
+		expect(() => parseEnv(source)).not.toThrow()
+	})
+
+	// Compose renders an unset `${X:-}` as "", which must boot like an unset key.
+	it("boots with every optional key compose.yml's worker service passes set to empty", () => {
+		const source: Record<string, string> = {}
+		for (const key of composeServiceEnvKeys("worker")) {
+			const placeholder = placeholderFor(key)
+			if (placeholder === undefined) {
+				throw new Error(`no placeholder for compose.yml worker key: ${key}`)
+			}
+			source[key] = isOptional(key) ? "" : placeholder
+		}
+
+		const env = parseEnv(source)
+		expect(env).toMatchObject({
+			DATABASE_MAX_CONNECTIONS: 10,
+			DATABASE_PLAINTEXT_HOSTS: [],
+			DATABASE_CA_SERVER_SPECIFIC: false,
+		})
+	})
+})

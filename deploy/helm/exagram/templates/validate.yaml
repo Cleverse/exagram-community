@@ -1,0 +1,37 @@
+{{- /* Renders nothing: refuses values that would install a broken release, before anything is applied. */}}
+{{- $_ := include "exagram.ucHost" . }}
+{{- if eq .Values.tls.mode "acme" }}
+{{- if not .Values.acmeEmail }}
+{{- fail "acmeEmail is required when tls.mode=acme (the default): Caddy registers it with Let's Encrypt. Set --set acmeEmail=you@example.com, or use tls.mode=ingress behind your own ingress controller" }}
+{{- end }}
+{{- else if ne .Values.tls.mode "ingress" }}
+{{- fail (printf "tls.mode must be acme or ingress, not: %s" .Values.tls.mode) }}
+{{- end }}
+{{- if and (not .Values.database.bundled) (not .Values.existingSecret) }}
+{{- if not (and .Values.database.external.url .Values.database.external.migrateUrl) }}
+{{- fail "database.bundled=false needs database.external.url and database.external.migrateUrl (or existingSecret holding DATABASE_URL and MIGRATE_DATABASE_URL)" }}
+{{- end }}
+{{- end }}
+{{- if eq .Values.storage.driver "s3" }}
+{{- if not (and .Values.storage.s3.bucket .Values.storage.s3.region) }}
+{{- fail "storage.driver=s3 needs storage.s3.bucket and storage.s3.region (R2: auto)" }}
+{{- end }}
+{{- if ne (empty .Values.storage.s3.accessKeyId) (empty .Values.storage.s3.secretAccessKey) }}
+{{- fail "set storage.s3.accessKeyId and storage.s3.secretAccessKey together, or neither (instance role, or existingSecret)" }}
+{{- end }}
+{{- else if eq .Values.storage.driver "gcs" }}
+{{- if not .Values.storage.gcs.bucket }}
+{{- fail "storage.driver=gcs needs storage.gcs.bucket" }}
+{{- end }}
+{{- else if ne .Values.storage.driver "filesystem" }}
+{{- fail (printf "storage.driver must be filesystem, s3 or gcs, not: %s" .Values.storage.driver) }}
+{{- end }}
+{{- $allowed := list }}
+{{- range $app, $keys := include "exagram.envKeys" . | fromYaml }}
+{{- $allowed = concat $allowed $keys.tunable ($keys.optional | default list) }}
+{{- end }}
+{{- range $key, $_ := .Values.env }}
+{{- if not (has $key $allowed) }}
+{{- fail (printf "env.%s is not a key this chart passes through; the chart sets the rest itself from other values (see values.yaml). Allowed: %s" $key (uniq $allowed | sortAlpha | join ", ")) }}
+{{- end }}
+{{- end }}

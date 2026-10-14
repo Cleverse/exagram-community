@@ -1,0 +1,3 @@
+BEGIN;
+DROP SCHEMA "source_archive" CASCADE;
+COMMIT;

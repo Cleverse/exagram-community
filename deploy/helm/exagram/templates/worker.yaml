@@ -1,0 +1,67 @@
+{{- $app := include "exagram.appHost" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "exagram.componentName" (list . "worker") }}
+  labels:
+    {{- include "exagram.labels" (list . "worker") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "exagram.selectorLabels" (list . "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "exagram.labels" (list . "worker") | nindent 8 }}
+        {{- include "exagram.objectsLabel" . | nindent 8 }}
+      {{- include "exagram.appPodAnnotations" . | nindent 6 }}
+    spec:
+      {{- include "exagram.imagePullSecrets" . | nindent 6 }}
+      {{- include "exagram.podSecurityContext" (dict "uid" 1000 "pvc" (include "exagram.filesystem" .)) | nindent 6 }}
+      {{- include "exagram.scheduling" (dict "ctx" . "objects" true) | nindent 6 }}
+      initContainers:
+        {{- include "exagram.waitForSchema" . | nindent 8 }}
+      containers:
+        # No port and no healthcheck in deploy/compose.yml either.
+        - name: worker
+          image: {{ include "exagram.image" (list . "worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Explicit allowlist matching deploy/compose.yml's worker service.
+          env:
+            {{- include "exagram.valuesEnv" (dict "ctx" . "app" "worker") | nindent 12 }}
+            - name: WEB_ORIGIN
+              value: "https://{{ $app }}"
+            {{- include "exagram.databaseEnv" . | nindent 12 }}
+            {{- include "exagram.storageEnv" (dict "ctx" . "app" "worker") | nindent 12 }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or (include "exagram.filesystem" .) (include "exagram.dbCaMounted" .) }}
+          volumeMounts:
+            {{- if include "exagram.filesystem" . }}
+            - name: objects
+              mountPath: /var/lib/exagram/objects
+            {{- end }}
+            {{- if include "exagram.dbCaMounted" . }}
+            - name: db-ca
+              mountPath: /certs/db-ca.pem
+              subPath: db-ca.pem
+              readOnly: true
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
+          {{- include "exagram.containerSecurityContext" . | nindent 10 }}
+      {{- $volumes := include "exagram.objectsVolume" . | trim }}
+      {{- $ca := include "exagram.dbCaVolume" . | trim }}
+      {{- if or $volumes $ca }}
+      volumes:
+        {{- with $volumes }}
+        {{- . | nindent 8 }}
+        {{- end }}
+        {{- with $ca }}
+        {{- . | nindent 8 }}
+        {{- end }}
+      {{- end }}

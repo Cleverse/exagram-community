@@ -1,0 +1,20 @@
+# Ref: https://dbhub.ai/config/toml
+[[sources]]
+id = "exagram-local"
+dsn = "postgres://exagram:exagram@localhost:25432/exagram"
+search_path = "exagram,public"
+lazy = true
+
+[[tools]]
+name = "execute_sql"
+source = "exagram-local"
+readonly = true
+max_rows = 500
+
+[[tools]]
+name = "search_objects"
+source = "exagram-local"
+
+[[tools]]
+name = "explain_sql"
+source = "exagram-local"

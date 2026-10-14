@@ -1,0 +1,80 @@
+# Proxy table for {$APP_HOST} mirrors apps/web/vite.config.ts's `proxy` object. Keep both in sync;
+# do not edit vite.config.ts from here. The one exception is @unfurl below: it routes by User-Agent,
+# not by path, and has no Vite counterpart (no unfurler reaches a dev server; `/v1/unfurl/*` itself
+# already proxies through `/v1`).
+#
+# Baked into the web image with caddy/*. The TLS mode picks the global options: acme (the default)
+# gets certificates itself; external (compose.tls-external.yml sets EXAGRAM_TLS and
+# EXAGRAM_SITE_SCHEME=http://) serves both hosts as plain HTTP on :80 behind a TLS-terminating proxy.
+# EXAGRAM_API_UPSTREAM and EXAGRAM_USERCONTENT_UPSTREAM default to the compose service names; the Helm chart overrides them.
+{
+	import /etc/caddy/tls-{$EXAGRAM_TLS:acme}.caddy
+}
+
+{$EXAGRAM_SITE_SCHEME}{$APP_HOST} {
+	# Live updates (`/v1/events`, `/l/<token>/events`) are text/event-stream, which the default
+	# `encode` match list (text/*) would compress and hold in the encoder between writes. They carry
+	# ids only, so they skip compression rather than rely on flush timing.
+	@compressible not path /v1/events /v1/events/ /l/*/events
+	encode @compressible gzip zstd
+	root * /srv
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	@api path /v1/* /mcp /mcp/* /.well-known/* /l/* /readiness
+	@oauth {
+		path /oauth/*
+		not path_regexp ^/oauth/consent/[^/]+$
+	}
+
+	# Link previews: an unfurler asking for an SPA share URL gets the api's preview page instead of
+	# index.html.
+	@unfurl {
+		header_regexp bot User-Agent (?i)(Slackbot|Slack-ImgProxy|Twitterbot|facebookexternalhit|Discordbot|LinkedInBot|TelegramBot|WhatsApp|SkypeUriPreview|MicrosoftPreview)
+		path_regexp target ^/(artifacts|projects)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$
+	}
+
+	# {client_ip} is the TCP peer, except in external mode, where a trusted proxy's header names it
+	# (caddy/tls-external.caddy). Setting X-Real-IP replaces any value the caller sent.
+	handle @unfurl {
+		rewrite * /v1/unfurl/{re.target.1}/{re.target.2}
+		reverse_proxy {$EXAGRAM_API_UPSTREAM:api:3000} {
+			header_up X-Real-IP {client_ip}
+		}
+	}
+	handle @api {
+		# Flush every write: SSE heartbeats and events must reach the browser as they are sent.
+		reverse_proxy {$EXAGRAM_API_UPSTREAM:api:3000} {
+			header_up X-Real-IP {client_ip}
+			flush_interval -1
+		}
+	}
+	handle @oauth {
+		reverse_proxy {$EXAGRAM_API_UPSTREAM:api:3000} {
+			header_up X-Real-IP {client_ip}
+		}
+	}
+	handle {
+		# Open tabs poll it to notice a new deploy (apps/web/src/features/webUpdate).
+		header /version.json Cache-Control no-store
+		# index.html carries the usercontent origin, rendered from UC_HOST on every request
+		# (caddy/usercontent-origin.html), so it is never cached. `route` keeps this order: the
+		# SPA fallback is rewritten to /index.html before the matcher looks at the path.
+		@index path / /index.html
+		route {
+			try_files {path} /index.html
+			header @index Cache-Control no-store
+			templates @index
+			file_server
+		}
+	}
+}
+
+{$EXAGRAM_SITE_SCHEME}{$UC_HOST} {
+	reverse_proxy {$EXAGRAM_USERCONTENT_UPSTREAM:usercontent:3002}
+}

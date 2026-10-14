@@ -1,0 +1,11 @@
+{
+	"extends": "@exagram/dotrc/tsconfig/node.json",
+	"compilerOptions": {
+		"composite": true,
+		"declarationMap": true,
+		"outDir": "./dist-ide",
+		"isolatedModules": false
+	},
+	"include": ["."],
+	"exclude": ["node_modules", "dist-ide", "*.config.mjs", "*.config.ts"]
+}

@@ -1,0 +1,24 @@
+# https://docs.sqlc.dev/en/stable/reference/config.html
+version: "2"
+plugins:
+  - name: ts
+    wasm:
+      url: https://cleverse-resource.storage.googleapis.com/library/sqlc/sqlc-gen-typescript_0.1.4-rc.1.wasm
+      sha256: b76ef4cb72c45b1febd92405692c876f5ff87ecfd1b46c4e1c5c7542a8da2fcb
+sql:
+  - engine: "postgresql"
+    queries: "./database/postgres/queries"
+    schema:
+      - "./database/postgres/migrations"
+    # sqlc's static analyzer cannot resolve the return columns of a `RETURNS TABLE` SQL-language
+    # function from the schema files alone (confirmed against sqlc 1.29.0 and 1.30.0), so
+    # visible_artifacts and pending_revisions need a live, migrated database to introspect against.
+    # Run `make local-migrate-up` against the local docker-compose postgres before generating.
+    database:
+      uri: "postgres://exagram:exagram@localhost:5432/exagram?sslmode=disable"
+    codegen:
+      - plugin: ts
+        out: packages/core/repository/postgres/gen
+        options:
+          runtime: node
+          driver: postgres

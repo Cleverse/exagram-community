@@ -1,0 +1,13 @@
+# Behind an existing ingress-nginx with a cert-manager certificate.
+appHost: exagram.example.com
+tls:
+  mode: ingress
+ingress:
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "21m"
+    cert-manager.io/cluster-issuer: letsencrypt
+  tls:
+    - hosts: [exagram.example.com, exagram-files.example.com]
+      secretName: exagram-tls

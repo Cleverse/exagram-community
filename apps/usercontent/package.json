@@ -1,0 +1,36 @@
+{
+	"name": "@exagram/usercontent",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "$npm_execpath typecheck && tsup",
+		"start": "node dist/index.js",
+		"dev": "node --watch --import tsx src/index.ts",
+		"typecheck": "tsc --noEmit",
+		"lint": "$npm_execpath typecheck && eslint . --report-unused-disable-directives",
+		"lint:fix": "$npm_execpath typecheck && eslint . --report-unused-disable-directives --fix",
+		"test": "vitest run --passWithNoTests",
+		"test:integration": "vitest run -c vitest.integration.config.ts --passWithNoTests"
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "catalog:",
+		"@aws-sdk/s3-request-presigner": "catalog:",
+		"@google-cloud/storage": "catalog:",
+		"fastify": "catalog:",
+		"pdfjs-dist": "catalog:",
+		"postgres": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@exagram/core": "workspace:*",
+		"@exagram/dotrc": "workspace:*",
+		"@testcontainers/postgresql": "catalog:",
+		"@types/node": "catalog:",
+		"eslint": "catalog:",
+		"testcontainers": "catalog:",
+		"tsup": "catalog:",
+		"tsx": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

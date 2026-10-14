@@ -1,0 +1,10 @@
+# Brought GCS bucket with a service account key.
+appHost: exagram.example.com
+acmeEmail: admin@example.com
+storage:
+  driver: gcs
+  gcs:
+    bucket: exagram
+    projectId: exagram-example
+    # base64 of {"client_email":"exagram@exagram-example.iam.gserviceaccount.com","private_key":"test-key"}
+    serviceAccountKeyBase64: eyJjbGllbnRfZW1haWwiOiJleGFncmFtQGV4YWdyYW0tZXhhbXBsZS5pYW0uZ3NlcnZpY2VhY2NvdW50LmNvbSIsInByaXZhdGVfa2V5IjoidGVzdC1rZXkifQ==

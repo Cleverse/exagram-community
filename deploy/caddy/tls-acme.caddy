@@ -1,0 +1,2 @@
+# Global options for the default TLS mode: Caddy gets and renews its own certificates over ACME.
+email {$ACME_EMAIL}

@@ -1,0 +1,90 @@
+{{- /*
+One migration gate per release revision, as compose runs preflight then migrate before the apps. A
+regular release resource, not a hook, so it can use this chart's Secret, Postgres and objects claim. A
+new revision renders a new name, so every upgrade runs it; Helm deletes the previous revision's Job.
+No ttlSecondsAfterFinished: a failed Job's logs stay readable.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # The prefix is cut, never the revision: a truncated name would repeat across upgrades.
+  name: {{ printf "%s-migrate-%d" (include "exagram.fullname" . | trunc 45 | trimSuffix "-") (int .Release.Revision) }}
+  labels:
+    {{- include "exagram.labels" (list . "migrate") | nindent 4 }}
+spec:
+  # While bundled Postgres starts, migrate fails to connect; each retry is a new Pod.
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        {{- include "exagram.labels" (list . "migrate") | nindent 8 }}
+        {{- include "exagram.objectsLabel" . | nindent 8 }}
+      {{- include "exagram.podAnnotations" . | nindent 6 }}
+    spec:
+      restartPolicy: Never
+      {{- include "exagram.imagePullSecrets" . | nindent 6 }}
+      {{- include "exagram.podSecurityContext" (dict "uid" 1000 "pvc" (include "exagram.filesystem" .)) | nindent 6 }}
+      {{- include "exagram.scheduling" (dict "ctx" . "objects" true) | nindent 6 }}
+      initContainers:
+        # The apps' boot checks (both database URLs, the storage settings, a test write to STORAGE_DIR),
+        # so a bad configuration stops here instead of migrating an external database first.
+        - name: preflight
+          image: {{ include "exagram.image" (list . "api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "dist/preflight.js"]
+          env:
+            {{- include "exagram.valuesEnv" (dict "ctx" . "app" "preflight") | nindent 12 }}
+            {{- include "exagram.databaseEnv" . | nindent 12 }}
+            {{- include "exagram.secretEnv" (list . "MIGRATE_DATABASE_URL") | nindent 12 }}
+            {{- include "exagram.secretEnv" (list . "USERCONTENT_TOKEN_SECRET") | nindent 12 }}
+            {{- include "exagram.secretEnv" (list . "UPLOAD_TOKEN_SECRET") | nindent 12 }}
+            {{- include "exagram.secretEnv" (list . "OIDC_COOKIE_KEYS") | nindent 12 }}
+            {{- include "exagram.secretEnv" (list . "OIDC_JWKS") | nindent 12 }}
+            {{- include "exagram.storageEnv" (dict "ctx" . "app" "preflight") | nindent 12 }}
+          {{- if or (include "exagram.filesystem" .) (include "exagram.dbCaMounted" .) }}
+          volumeMounts:
+            {{- if include "exagram.filesystem" . }}
+            - name: objects
+              mountPath: /var/lib/exagram/objects
+            {{- end }}
+            {{- if include "exagram.dbCaMounted" . }}
+            - name: db-ca
+              mountPath: /certs/db-ca.pem
+              subPath: db-ca.pem
+              readOnly: true
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.migrate | nindent 12 }}
+          {{- include "exagram.containerSecurityContext" . | nindent 10 }}
+      containers:
+        # The URL carries the password, so the shell expands it into migrate's own arguments only while it
+        # runs, rather than it sitting in the Pod spec's args (golang-migrate takes it only as a flag).
+        - name: migrate
+          image: {{ include "exagram.image" (list . "migrate") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args: ['exec migrate -path=/migrations -database="$MIGRATE_DATABASE_URL" -verbose up']
+          env:
+            {{- include "exagram.secretEnv" (list . "MIGRATE_DATABASE_URL") | nindent 12 }}
+          {{- if include "exagram.dbCaMounted" . }}
+          volumeMounts:
+            - name: db-ca
+              mountPath: /certs/db-ca.pem
+              subPath: db-ca.pem
+              readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.migrate | nindent 12 }}
+          {{- include "exagram.containerSecurityContext" . | nindent 10 }}
+      {{- $volumes := include "exagram.objectsVolume" . | trim }}
+      {{- $ca := include "exagram.dbCaVolume" . | trim }}
+      {{- if or $volumes $ca }}
+      volumes:
+        {{- with $volumes }}
+        {{- . | nindent 8 }}
+        {{- end }}
+        {{- with $ca }}
+        {{- . | nindent 8 }}
+        {{- end }}
+      {{- end }}

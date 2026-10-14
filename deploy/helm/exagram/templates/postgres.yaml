@@ -1,0 +1,83 @@
+{{- if .Values.database.bundled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "exagram.postgresHost" . }}
+  labels:
+    {{- include "exagram.labels" (list . "postgres") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "exagram.selectorLabels" (list . "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+# Same image and layout as deploy/compose.postgres.yml. Plaintext inside the cluster; the apps allow it
+# only for this Service's name (DATABASE_PLAINTEXT_HOSTS).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "exagram.componentName" (list . "postgres") }}
+  labels:
+    {{- include "exagram.labels" (list . "postgres") | nindent 4 }}
+spec:
+  serviceName: {{ include "exagram.postgresHost" . }}
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- include "exagram.selectorLabels" (list . "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "exagram.labels" (list . "postgres") | nindent 8 }}
+      {{- include "exagram.podAnnotations" . | nindent 6 }}
+    spec:
+      {{- include "exagram.imagePullSecrets" . | nindent 6 }}
+      # The image's postgres user (uid/gid 999); its entrypoint skips the root-only chown when started as it.
+      {{- include "exagram.podSecurityContext" (dict "uid" 999 "pvc" true) | nindent 6 }}
+      {{- include "exagram.scheduling" (dict "ctx" . "objects" false) | nindent 6 }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          env:
+            - name: POSTGRES_USER
+              value: exagram
+            {{- include "exagram.secretEnv" (list . "POSTGRES_PASSWORD") | nindent 12 }}
+            - name: POSTGRES_DB
+              value: exagram
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "exagram", "-d", "exagram"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+          resources:
+            {{- toYaml .Values.resources.postgres | nindent 12 }}
+          {{- include "exagram.containerSecurityContext" . | nindent 10 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "exagram.selectorLabels" (list . "postgres") | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with .Values.persistence.postgres.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.postgres.size }}
+{{- end }}

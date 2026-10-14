@@ -1,0 +1,210 @@
+name: exagram-selfhost
+
+# Layers are picked by COMPOSE_FILE in .env, which gen-secrets.sh writes: compose.postgres.yml adds
+# the bundled database, compose.db-ca.yml mounts a private database CA, compose.tls-external.yml
+# puts Caddy behind a TLS-terminating proxy. This file alone expects an external database.
+#
+# Images are the published ones. In a release bundle each is pinned to its version and digest. In
+# a source checkout, compose.build.yml builds them from the working tree instead, or
+# EXAGRAM_VERSION=vX.Y.Z pulls that release by tag.
+
+services:
+  # Runs the apps' boot checks (both database URLs, the storage settings, a test write to
+  # STORAGE_DIR) once, so a bad .env stops here instead of migrating an external database first.
+  preflight:
+    image: ghcr.io/cleverse/exagram-api:${EXAGRAM_VERSION:-local}
+    command: ["node", "dist/preflight.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_URL: ${DATABASE_URL}
+      MIGRATE_DATABASE_URL: ${MIGRATE_DATABASE_URL}
+      DATABASE_PLAINTEXT_HOSTS: ${DATABASE_PLAINTEXT_HOSTS:-}
+      DATABASE_CA_SERVER_SPECIFIC: ${DATABASE_CA_SERVER_SPECIFIC:-}
+      USERCONTENT_TOKEN_SECRET: ${USERCONTENT_TOKEN_SECRET}
+      UPLOAD_TOKEN_SECRET: ${UPLOAD_TOKEN_SECRET:-}
+      OIDC_COOKIE_KEYS: ${OIDC_COOKIE_KEYS}
+      OIDC_JWKS: ${OIDC_JWKS}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-filesystem}
+      STORAGE_DIR: /var/lib/exagram/objects
+      # Pre-layer-split key, read only so preflight can refuse such an .env.
+      S3_HOST: ${S3_HOST:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_HTTP_HOSTS: ${S3_HTTP_HOSTS:-}
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_PROJECT_ID: ${GCS_PROJECT_ID:-}
+      GCS_SERVICE_ACCOUNT_KEY_BASE64: ${GCS_SERVICE_ACCOUNT_KEY_BASE64:-}
+    volumes:
+      - objects:/var/lib/exagram/objects
+    restart: "no"
+
+  # DATABASE_URL (with search_path) is for the apps; MIGRATE_DATABASE_URL (no search_path, table
+  # pinned to public.schema_migrations) is the same shape golang-migrate needs, see Makefile.
+  migrate:
+    image: ghcr.io/cleverse/exagram-migrate:${EXAGRAM_VERSION:-local}
+    # The URL carries the password, so it isn't in the service's command (`docker inspect` Args);
+    # the shell expands it into migrate's own arguments only while migrate runs, since golang-migrate
+    # takes it only as a flag. `run migrate <script>` replaces the command, see verify.sh.
+    environment:
+      MIGRATE_DATABASE_URL: ${MIGRATE_DATABASE_URL}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['exec migrate -path=/migrations -database="$$MIGRATE_DATABASE_URL" -verbose up']
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # Single replica only: the MCP rate limiter is an in-process Map, not shared state.
+  api:
+    image: ghcr.io/cleverse/exagram-api:${EXAGRAM_VERSION:-local}
+    # Explicit allowlist matching apps/api/src/env.ts: no env_file, so nothing extra leaks in.
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      HTTP_PORT: "3000"
+      SHUTDOWN_TIMEOUT_SEC: "30"
+      API_ORIGIN: https://${APP_HOST}
+      WEB_ORIGIN: https://${APP_HOST}
+      USERCONTENT_ORIGIN: https://${UC_HOST}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-real-ip}
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-}
+      DATABASE_PLAINTEXT_HOSTS: ${DATABASE_PLAINTEXT_HOSTS:-}
+      DATABASE_CA_SERVER_SPECIFIC: ${DATABASE_CA_SERVER_SPECIFIC:-}
+      SESSION_COOKIE_SECURE: "true"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Sign in with Apple: all four or none. The private key may be one line with \n escapes.
+      APPLE_SERVICES_ID: ${APPLE_SERVICES_ID:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+      USERCONTENT_TOKEN_SECRET: ${USERCONTENT_TOKEN_SECRET}
+      UPLOAD_TOKEN_SECRET: ${UPLOAD_TOKEN_SECRET:-}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-filesystem}
+      STORAGE_DIR: /var/lib/exagram/objects
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_HTTP_HOSTS: ${S3_HTTP_HOSTS:-}
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_PROJECT_ID: ${GCS_PROJECT_ID:-}
+      GCS_SERVICE_ACCOUNT_KEY_BASE64: ${GCS_SERVICE_ACCOUNT_KEY_BASE64:-}
+      # Self-hosted always signs create-only uploads; the bucket CORS must allow the header (docs/self-host/configuration.md).
+      GCS_CREATE_ONLY_UPLOADS: "true"
+      OIDC_COOKIE_KEYS: ${OIDC_COOKIE_KEYS}
+      OIDC_JWKS: ${OIDC_JWKS}
+      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE}
+    volumes:
+      - objects:/var/lib/exagram/objects
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/cleverse/exagram-worker:${EXAGRAM_VERSION:-local}
+    # Explicit allowlist matching apps/worker/src/env.ts.
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      WEB_ORIGIN: https://${APP_HOST}
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-}
+      DATABASE_PLAINTEXT_HOSTS: ${DATABASE_PLAINTEXT_HOSTS:-}
+      DATABASE_CA_SERVER_SPECIFIC: ${DATABASE_CA_SERVER_SPECIFIC:-}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-filesystem}
+      STORAGE_DIR: /var/lib/exagram/objects
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_HTTP_HOSTS: ${S3_HTTP_HOSTS:-}
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_PROJECT_ID: ${GCS_PROJECT_ID:-}
+      GCS_SERVICE_ACCOUNT_KEY_BASE64: ${GCS_SERVICE_ACCOUNT_KEY_BASE64:-}
+    volumes:
+      - objects:/var/lib/exagram/objects
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  usercontent:
+    image: ghcr.io/cleverse/exagram-usercontent:${EXAGRAM_VERSION:-local}
+    # Explicit allowlist matching apps/usercontent/src/env.ts: no OIDC, upload or root secrets here.
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      HTTP_PORT: "3002"
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-}
+      DATABASE_PLAINTEXT_HOSTS: ${DATABASE_PLAINTEXT_HOSTS:-}
+      DATABASE_CA_SERVER_SPECIFIC: ${DATABASE_CA_SERVER_SPECIFIC:-}
+      USERCONTENT_TOKEN_SECRET: ${USERCONTENT_TOKEN_SECRET}
+      # /l/* on APP_HOST is the Link page (see Caddyfile); the web app is also served from APP_HOST.
+      USERCONTENT_FRAME_ANCESTORS: https://${APP_HOST}
+      USERCONTENT_ORIGIN: https://${UC_HOST}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-filesystem}
+      STORAGE_DIR: /var/lib/exagram/objects
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      S3_HTTP_HOSTS: ${S3_HTTP_HOSTS:-}
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_PROJECT_ID: ${GCS_PROJECT_ID:-}
+      GCS_SERVICE_ACCOUNT_KEY_BASE64: ${GCS_SERVICE_ACCOUNT_KEY_BASE64:-}
+    volumes:
+      - objects:/var/lib/exagram/objects:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # The web image: Caddy with the SPA and its Caddyfile. It renders https://UC_HOST into index.html
+  # on every request, so the same image serves any install.
+  caddy:
+    image: ghcr.io/cleverse/exagram-web:${EXAGRAM_VERSION:-local}
+    environment:
+      APP_HOST: ${APP_HOST:?APP_HOST must be set (gen-secrets.sh writes it)}
+      UC_HOST: ${UC_HOST:?UC_HOST must be set (gen-secrets.sh writes it)}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      api:
+        condition: service_healthy
+      usercontent:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  objects:
+  caddy-data:
+  caddy-config:

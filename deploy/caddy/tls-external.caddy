@@ -1,0 +1,13 @@
+# Global options for `gen-secrets.sh --tls external` (compose.tls-external.yml): a TLS-terminating
+# proxy or tunnel sits in front, and Caddy serves both hosts as plain HTTP on :80.
+auto_https off
+servers {
+	# The client address comes from the header EXAGRAM_CLIENT_IP_HEADER names, and only when a private address
+	# (the proxy, a tunnel connector, the Docker bridge) sent the request. Strict reads a
+	# comma-separated value right to left, so an address a caller prepends is never the one taken.
+	# EXAGRAM_TRUSTED_PROXIES defaults to private_ranges; a space-separated CIDR list may replace it
+	# (Caddy substitutes env placeholders before parsing, so one value can expand to several tokens).
+	trusted_proxies static {$EXAGRAM_TRUSTED_PROXIES:private_ranges}
+	trusted_proxies_strict
+	client_ip_headers {$EXAGRAM_CLIENT_IP_HEADER}
+}

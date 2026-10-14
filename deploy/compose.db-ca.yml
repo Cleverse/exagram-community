@@ -1,0 +1,29 @@
+# Private database CA layer: mounts DATABASE_CA_FILE (an absolute host path, readable by UID 1000)
+# at /certs/db-ca.pem, which both database URLs name as sslrootcert. A layer because compose can't
+# skip a bind mount when the variable is empty. create_host_path: false makes a missing file an
+# error instead of an empty directory mounted in its place.
+
+x-db-ca: &db-ca
+  type: bind
+  source: ${DATABASE_CA_FILE:?DATABASE_CA_FILE must name the database CA file}
+  target: /certs/db-ca.pem
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  preflight:
+    volumes:
+      - *db-ca
+  migrate:
+    volumes:
+      - *db-ca
+  api:
+    volumes:
+      - *db-ca
+  worker:
+    volumes:
+      - *db-ca
+  usercontent:
+    volumes:
+      - *db-ca

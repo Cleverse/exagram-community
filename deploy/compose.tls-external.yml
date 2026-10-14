@@ -1,0 +1,16 @@
+# External TLS layer (gen-secrets.sh --tls external): a TLS-terminating proxy or tunnel (Cloudflare
+# Tunnel, a load balancer, nginx) sits in front and sends both hosts to one plain-HTTP port. Caddy
+# gets no certificates, routes by Host exactly as in the default mode, and takes the client address
+# from PROXY_CLIENT_IP_HEADER only when a private address sent the request (caddy/tls-external.caddy).
+# `!override` needs Docker Compose 2.24.4 or later.
+
+services:
+  caddy:
+    environment:
+      EXAGRAM_TLS: external
+      EXAGRAM_SITE_SCHEME: "http://"
+      EXAGRAM_CLIENT_IP_HEADER: ${PROXY_CLIENT_IP_HEADER:-X-Forwarded-For}
+    # Loopback by default: only a proxy on this machine reaches it. A proxy elsewhere needs a
+    # reachable address, and then anything that reaches this port can name its own client address.
+    ports: !override
+      - "${HTTP_BIND:-127.0.0.1:8080}:80"

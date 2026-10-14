@@ -1,0 +1,323 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
+
+# Must match the root package.json `turbo` devDependency: the probe and the installed turbo have to hash alike.
+env:
+  TURBO_VERSION: 2.11.4
+  # --affected compares against this; explicit so it does not depend on how turbo resolves GITHUB_BASE_REF.
+  TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
+
+# An unrelated label event gets its own group so it cannot cancel a run in progress.
+concurrency:
+  group:
+    ci-${{ github.ref }}${{ github.event.action == 'labeled' && github.event.label.name != 'ci' && format('-{0}',
+    github.run_id) || '' }}
+  cancel-in-progress: true
+
+jobs:
+  # Every package's `lint` script runs its `typecheck` first, so this job covers both.
+  lint:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && (github.event.action != 'labeled'
+      || github.event.label.name == 'ci') }}
+    outputs:
+      db: ${{ steps.changed.outputs.db }}
+      build: ${{ steps.changed.outputs.build }}
+    env:
+      TURBO_ARGS: run lint --affected
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # turbo --affected treats every package as changed on a shallow clone.
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Classify changed paths
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # A failed diff leaves a sentinel that matches both patterns, so the dependent jobs run.
+          changed=$(git diff --name-only "$BASE_SHA"...HEAD) || changed=$'database/postgres/x\nDockerfile'
+          flag() { if echo "$changed" | grep -E "$2" > /dev/null; then echo "$1=true"; else echo "$1=false"; fi; }
+          {
+            flag db '^(database/postgres/|sqlc\.yaml$|packages/core/repository/postgres/gen/)'
+            flag build '^(Dockerfile|\.dockerignore|(apps|packages)/[^/]+/(package\.json|tsup\.config\.ts|tsconfig[^/]*\.json)|packages/dotrc/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|deploy/|database/postgres/migrations/|scripts/image-smoke\.sh|\.github/workflows/ci\.yml)'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ github.job }}-${{ github.sha }}
+          restore-keys: turbo-${{ github.job }}-
+
+      # A dry run needs only the lockfile and package.json files, so when every task is already cached the
+      # install is skipped and turbo replays the cached logs instead. With no affected task nothing runs at all.
+      # Anything unclear counts as a miss.
+      - name: Probe turbo cache
+        id: probe
+        run: |
+          hit=false
+          none=false
+          if pnpm dlx turbo@$TURBO_VERSION $TURBO_ARGS --dry=json > "$RUNNER_TEMP/dry.json"; then
+            tasks='[.tasks[] | select(.command != "<NONEXISTENT>")]'
+            if jq -e "$tasks | length == 0" "$RUNNER_TEMP/dry.json" > /dev/null; then
+              none=true
+            elif jq -e "$tasks | all(.cache.status == \"HIT\")" "$RUNNER_TEMP/dry.json" > /dev/null; then
+              hit=true
+            fi
+          fi
+          echo "hit=$hit" >> "$GITHUB_OUTPUT"
+          echo "none=$none" >> "$GITHUB_OUTPUT"
+
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.16"
+          cache: pnpm
+
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and lint
+        if: ${{ steps.probe.outputs.none != 'true' }}
+        run: |
+          if [ "${{ steps.probe.outputs.hit }}" = true ]; then
+            pnpm dlx turbo@$TURBO_VERSION $TURBO_ARGS
+          else
+            pnpm turbo $TURBO_ARGS
+          fi
+
+      - name: Check tsconfig references
+        run: node scripts/check-tsconfig-refs.mjs
+
+      # Turbo caches only tasks that succeeded, so saving after a failure is safe.
+      - if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ github.job }}-${{ github.sha }}
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TURBO_ARGS: run test --affected
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # turbo --affected treats every package as changed on a shallow clone.
+          fetch-depth: 0
+          filter: blob:none
+
+      # The env.helm tests render deploy/helm/exagram and skip without helm, so this job always installs it.
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.22.0
+
+      - name: Helm lint and render
+        run: |
+          # A bare `helm lint` only logs a missing required value, so lint each values file instead.
+          for values in deploy/helm/exagram/ci/*.yaml; do
+            echo "helm lint and template -f $values"
+            helm lint --strict deploy/helm/exagram -f "$values"
+            helm template t deploy/helm/exagram -f "$values" > /dev/null
+          done
+
+      - name: gen-secrets accept/reject table and compose renders
+        run: deploy/gen-secrets.test.sh
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ github.job }}-${{ github.sha }}
+          restore-keys: turbo-${{ github.job }}-
+
+      # A dry run needs only the lockfile and package.json files, so when every task is already cached the
+      # install is skipped and turbo replays the cached logs instead. With no affected task nothing runs at all.
+      # Anything unclear counts as a miss.
+      - name: Probe turbo cache
+        id: probe
+        run: |
+          hit=false
+          none=false
+          if pnpm dlx turbo@$TURBO_VERSION $TURBO_ARGS --dry=json > "$RUNNER_TEMP/dry.json"; then
+            tasks='[.tasks[] | select(.command != "<NONEXISTENT>")]'
+            if jq -e "$tasks | length == 0" "$RUNNER_TEMP/dry.json" > /dev/null; then
+              none=true
+            elif jq -e "$tasks | all(.cache.status == \"HIT\")" "$RUNNER_TEMP/dry.json" > /dev/null; then
+              hit=true
+            fi
+          fi
+          echo "hit=$hit" >> "$GITHUB_OUTPUT"
+          echo "none=$none" >> "$GITHUB_OUTPUT"
+
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.16"
+          cache: pnpm
+
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        if: ${{ steps.probe.outputs.none != 'true' }}
+        run: |
+          if [ "${{ steps.probe.outputs.hit }}" = true ]; then
+            pnpm dlx turbo@$TURBO_VERSION $TURBO_ARGS
+          else
+            pnpm turbo $TURBO_ARGS
+          fi
+
+      # Turbo caches only tasks that succeeded, so saving after a failure is safe.
+      - if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ github.job }}-${{ github.sha }}
+
+  # Each vitest process starts its own Postgres container, so packages do not share a database.
+  integration:
+    runs-on: ubuntu-latest
+    env:
+      TURBO_ARGS: run test:integration --affected
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # turbo --affected treats every package as changed on a shallow clone.
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ github.job }}-${{ github.sha }}
+          restore-keys: turbo-${{ github.job }}-
+
+      # A dry run needs only the lockfile and package.json files, so when every task is already cached the
+      # install is skipped and turbo replays the cached logs instead. With no affected task nothing runs at all.
+      # Anything unclear counts as a miss.
+      - name: Probe turbo cache
+        id: probe
+        run: |
+          hit=false
+          none=false
+          if pnpm dlx turbo@$TURBO_VERSION $TURBO_ARGS --dry=json > "$RUNNER_TEMP/dry.json"; then
+            tasks='[.tasks[] | select(.command != "<NONEXISTENT>")]'
+            if jq -e "$tasks | length == 0" "$RUNNER_TEMP/dry.json" > /dev/null; then
+              none=true
+            elif jq -e "$tasks | all(.cache.status == \"HIT\")" "$RUNNER_TEMP/dry.json" > /dev/null; then
+              hit=true
+            fi
+          fi
+          echo "hit=$hit" >> "$GITHUB_OUTPUT"
+          echo "none=$none" >> "$GITHUB_OUTPUT"
+
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.16"
+          cache: pnpm
+
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        run: pnpm install --frozen-lockfile
+
+      # Pre-pull so a cold image pull does not present as a hung test.
+      - if: ${{ steps.probe.outputs.none != 'true' && steps.probe.outputs.hit != 'true' }}
+        name: Pre-pull postgres
+        run: docker pull postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+
+      - name: Integration tests
+        if: ${{ steps.probe.outputs.none != 'true' }}
+        run: |
+          if [ "${{ steps.probe.outputs.hit }}" = true ]; then
+            pnpm dlx turbo@$TURBO_VERSION $TURBO_ARGS
+          else
+            pnpm turbo $TURBO_ARGS
+          fi
+
+      # Turbo caches only tasks that succeeded, so saving after a failure is safe.
+      - if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ github.job }}-${{ github.sha }}
+
+  sqlc:
+    needs: lint
+    # lint is skipped on push to main, hence !cancelled() instead of the default success() gate.
+    if: >-
+      ${{ !cancelled() && (github.event_name == 'push' || (needs.lint.result == 'success' && (github.event_name ==
+      'pull_request' && !github.event.pull_request.draft && (github.event.action != 'labeled' || github.event.label.name
+      == 'ci') && (contains(fromJSON('["opened","reopened","ready_for_review"]'), github.event.action) ||
+      contains(github.event.pull_request.labels.*.name, 'ci'))) && needs.lint.outputs.db == 'true')) }}
+    runs-on: ubuntu-latest
+    # sqlc cannot resolve the column types of a RETURNS TABLE SQL function from the schema files
+    # alone, so sqlc.yaml also points it at a live, migrated database for introspection.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: exagram
+          POSTGRES_PASSWORD: exagram
+          POSTGRES_DB: exagram
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U exagram -d exagram" --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: "1.29.0"
+
+      - name: Apply migrations
+        run: make local-migrate-up
+        env:
+          DATABASE_URL: postgres://exagram:exagram@localhost:5432/exagram?sslmode=disable&search_path=exagram%2Cpublic
+
+      - name: sqlc compile
+        run: sqlc compile
+
+  images:
+    needs: lint
+    if: >-
+      ${{ needs.lint.result == 'success' && (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ci') &&
+      (contains(fromJSON('["opened","reopened","ready_for_review"]'), github.event.action) ||
+      contains(github.event.pull_request.labels.*.name, 'ci'))) && needs.lint.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Expose GitHub Actions runtime
+        uses: crazy-max/ghaction-github-runtime@v3
+
+      - name: Image smoke tests
+        env:
+          SMOKE_BUILD_ARGS: >-
+            --cache-from=type=gha,scope=exagram-image-smoke-{app}
+            --cache-to=type=gha,mode=max,scope=exagram-image-smoke-{app}
+        run: scripts/image-smoke.sh
